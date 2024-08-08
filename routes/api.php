@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Credentials;
+use App\Http\Controllers\TechnicianController;
+use App\Models\Technician;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -20,3 +22,4 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 });
 
 Route::post("login", [Credentials::class, "process_login"]);
+Route::post("technician/{token}", [TechnicianController::class, "getTechnicianData"]);
