@@ -87,4 +87,18 @@ class Credentials extends Controller
         }
         return $token;
     }
+
+    function checkToken(Request $request){
+        if($request->input("token") !== null){
+            $credential = Credential::where("authentication_code", $request->input("token"))->first();
+            if ($credential !== null) {
+                // are valid credentials
+                return response()->json(["success" => true, "data" => $credential], 200);
+            }else {
+                return response()->json(["success" => false, "message" => "Invalid token"], 401);
+            }
+        }else {
+            return response()->json(["success" => false, "message" => "Invalid token"], 401);
+        }
+    }
 }
