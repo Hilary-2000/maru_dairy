@@ -2,8 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Administrator;
 use App\Models\Credential;
+use App\Models\Member;
+use App\Models\SuperAdministrator;
 use App\Models\Technician;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
 date_default_timezone_set('Africa/Nairobi');
 
 use function PHPUnit\Framework\isEmpty;
@@ -23,9 +29,9 @@ class TechnicianController extends Controller
                 // time of day 
                 $time = date("H");
                 $time_of_day = "Goodmorning";
-                if ($time > 0 && $time < 9) {
+                if ($time > 0 && $time < 11) {
                     $time_of_day = "Goodmorning";
-                }elseif ($time > 9 && $time < 12) {
+                }elseif ($time > 11 && $time < 12) {
                     $time_of_day = "Hello";
                 }elseif ($time > 12 && $time < 15) {
                     $time_of_day = "Good Afternoon";
@@ -40,6 +46,116 @@ class TechnicianController extends Controller
             }
         }else{
             return response()->json(["success" => false, "message" => "Login Expired! Log-out and try again", "token" => $token]);
+        }
+    }
+
+    function getDetails($technician_id){
+        // get the credentials
+        $credential = DB::select("SELECT * FROM `credentials` WHERE `authentication_code` = ?", [$technician_id]);
+        if(count($credential) > 0){
+            // technician data
+            $technician_data = DB::select("SELECT * FROM `technicians` WHERE `user_id` = ?", [$credential[0]->user_id]);
+
+            // get the collection stats
+            $collection_days = DB::select("SELECT COUNT(*) AS 'days_collected' FROM `milk_collections` WHERE `technician_id` = '".$credential[0]->user_id."' AND `user_type` = '1'");
+            $collection_amount = DB::select("SELECT `collection_amount` FROM `milk_collections` WHERE `technician_id` = '".$credential[0]->user_id."' AND `user_type` = '1'");
+            $total = 0;
+            foreach($collection_amount as $collect){
+                $total += $collect->collection_amount*=1;
+            }
+            
+            // return the data
+            $technician_data[0]->collection_days = count($collection_days) > 0 ? $collection_days[0]->days_collected : 0;
+            $technician_data[0]->collection_amount = number_format($total);
+            return response()->json(["success" => true, "total_collection" => $total, "technician_data" => $technician_data[0]]);
+        }else{
+            // return the data
+            return response()->json(["success" => false, "message" => "Invalid technician!"]);
+        }
+    }
+
+    function updateUserDetails(Request $request){
+        $fullname = $request->input("fullname");
+        $gender = $request->input("gender");
+        $phone_number = $request->input("phone_number");
+        $email = $request->input("email");
+        $residence = $request->input("residence");
+        $region = $request->input("region");
+        $username = $request->input("username");
+        $national_id = $request->input("national_id");
+
+        // token
+        $authentication_code = $request->header('maru-authentication_code');
+        $check_username = DB::select("SELECT * FROM `credentials` WHERE `username` = ? AND `authentication_code` != ?", [$username, $authentication_code]);
+        
+        if (count($check_username) == 0) {
+            // token
+            $token = $request->header("maru-authentication_code");
+            $tech = DB::select("SELECT * FROM `credentials` WHERE `authentication_code` = ?", [$token]);
+            
+            if (count($tech) > 0) {
+                // get the technician id
+                $technician = Technician::find($tech[0]->user_id);
+                $technician->fullname = $fullname;
+                $technician->phone_number = $phone_number;
+                $technician->gender = $gender;
+                $technician->email = $email;
+                $technician->residence = $residence;
+                $technician->region = $region;
+                $technician->username = $username;
+                $technician->national_id = $national_id;
+                $technician->user_id = $tech[0]->user_id;
+                $technician->save();
+    
+                // update the credential username
+                $credential = Credential::find($tech[0]->credential_id);
+                $credential->username = $username;
+                $credential->save();
+                
+                // return statement
+                return response()->json(["success" => true, "message" => "Update has been successfully done!"]);
+            }else{
+                return response()->json(["success" => false, "message" => "An error has occured!"]);
+            }
+        }else{
+            return response()->json(["success" => false, "message" => "The username provided has been used!"]);
+        }
+    }
+
+    function updateCredentials(Request $request){
+        // find the technician with the username and password provided
+        $username = $request->input("username");
+        $password = $request->input("password");
+
+        // get the userdata
+        $credential = Credential::where("username", $username)->first();
+        if ($credential) {
+            // update the credentials
+            $credential->password = $password;
+            $credential->save();
+
+            // update the technician password
+            if ($credential->user_type == "1") {
+                $technician = Technician::find($credential->user_id);
+                $technician->password = $password;
+                $technician->save();
+            }elseif ($credential->user_type == "2") {
+                $administrator = Administrator::find($credential->user_id);
+                $administrator->password = $password;
+                $administrator->save();
+            }elseif ($credential->user_type == "3") {
+                $superAdmin = SuperAdministrator::find($credential->user_id);
+                $superAdmin->password = $password;
+                $superAdmin->save();
+            }elseif ($credential->user_type == "4") {
+                $member = Member::find($credential->user_id);
+                $member->password = $password;
+                $member->save();
+            }
+            // update the personal credentials
+            return response()->json(["success" => true, "message" => "Successfully updated your password!"]);
+        }else{
+            return response()->json(["success" => false, "message" => "Invalid credential provided!"]);
         }
     }
 }
