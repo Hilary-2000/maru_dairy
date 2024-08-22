@@ -143,4 +143,215 @@ class MemberController extends Controller
         // return a success message
         return response()->json(["success" => true, "message" => "Saved successfully!"], 200);
     }
+
+    // get the member dashboard
+    function getMemberDashboard(Request $request, $period){
+        $authentication_code = $request->header("maru-authentication_code");
+        // time of day 
+        $time = date("H");
+        $time_of_day = "Goodmorning";
+        if ($time > 0 && $time < 11) {
+            $time_of_day = "Goodmorning";
+        }elseif ($time > 11 && $time < 12) {
+            $time_of_day = "Hello";
+        }elseif ($time > 12 && $time < 15) {
+            $time_of_day = "Good Afternoon";
+        }elseif ($time > 15 && $time < 23) {
+            $time_of_day = "Good Evening";
+        }else{
+            $time_of_day = "Hello";
+        }
+        
+        // get the member data
+        $member = Credential::where("authentication_code", $authentication_code)->first();
+        
+        // member
+        if($member != null){
+            $member_details = Member::find($member->user_id);
+            // confirm member details
+            if ($member_details != null) {
+                // proceed to get the member data
+                $data = [];
+                $total_collection = 0;
+                $collection_status = "constant";
+                $percentage = 0;
+                $duration = "";
+                if($period == "7 days"){
+                    $date = date("Ymd");
+                    for ($index = 0; $index < 7; $index++) {
+                        // collection
+                        $collect = DB::select("SELECT SUM(`collection_amount`) AS 'Amount' FROM `milk_collections` WHERE `member_id` = '".$member->user_id."' AND `collection_date` LIKE '".$date."%';");
+                        $day_data = array("date" => $date, "label" => date("dS-M", strtotime($date)), "amount" => (count($collect) > 0 ? ($collect[0]->Amount ?? 0) : 0));
+                        
+                        // day data
+                        $total_collection += $day_data['amount'];
+                        array_push($data, $day_data);
+
+                        // add the date
+                        $date = date("Ymd", strtotime((($index + 1) * -1)." days"));
+                    }
+
+                    // previous 7 days collection
+                    $start_date = date("Ymd", strtotime("-7 days"))."000000";
+                    $end_date = date("Ymd")."235959";
+                    $duration = date("D dS M Y", strtotime($start_date))." - ". date("D dS M Y", strtotime($end_date));
+                    $start_date = date("Ymd", strtotime("-14 days"))."000000";
+                    $end_date = date("Ymd", strtotime("-7 days"))."235959";
+                    $previous = DB::select("SELECT SUM(`collection_amount`) AS 'Amount' FROM `milk_collections` WHERE `member_id` = '".$member->user_id."' AND `collection_date` BETWEEN ? AND ? ",[$start_date, $end_date]);
+                    $previous_amount = count($previous) > 0 ? $previous[0]->Amount ?? 0 : 0;
+
+                    if ($previous_amount > 0 && $total_collection > 0) {
+                        if($previous_amount > $total_collection){
+                            $collection_status = "decrease";
+                            $percentage = ($previous_amount - $total_collection) / $total_collection * 100;
+                        }elseif($previous_amount < $total_collection){
+                            $collection_status = "increase";
+                            $percentage = ($total_collection - $previous_amount) / $total_collection * 100;
+                        }else{
+                            $collection_status = "constant";
+                            $percentage = 0;
+                        }
+                    }else{
+                        $percentage = 0;
+                        $collection_status = "constant";
+                    }
+                }elseif($period == "14 days"){
+                    $counter = 0;
+                    for ($index=0; $index < 7; $index++) {
+                        // collection
+                        $start_date = date("Ymd", strtotime((($counter + 2) * -1)." days"));
+                        $end_date = date("Ymd", strtotime(($counter * -1)." days"));
+                        $collect = DB::select("SELECT SUM(`collection_amount`) AS 'Amount' FROM `milk_collections` WHERE `member_id` = '".$member->user_id."' AND `collection_date` BETWEEN ? AND ?",[$start_date, $end_date]);
+                        $day_data = array("date" => $end_date, "label" => date("dS-M", strtotime($end_date)), "amount" => (count($collect) > 0 ? $collect[0]->Amount ?? 0 : 0));
+                        
+                        // day data
+                        $total_collection += $day_data['amount'];
+                        array_push($data, $day_data);
+
+                        // add the date
+                        $date = date("Ymd", strtotime($index+1));
+
+                        // add two days
+                        $counter+=2;
+                    }
+
+                    // previous 14 days collection
+                    $start_date = date("Ymd", strtotime("-14 days"))."000000";
+                    $end_date = date("Ymd")."235959";
+                    $duration = date("D dS M Y", strtotime($start_date))." - ". date("D dS M Y", strtotime($end_date));
+                    $start_date = date("Ymd", strtotime("-28 days"))."000000";
+                    $end_date = date("Ymd", strtotime("-14 days"))."235959";
+                    $previous = DB::select("SELECT SUM(`collection_amount`) AS 'Amount' FROM `milk_collections` WHERE `member_id` = '".$member->user_id."' AND `collection_date` BETWEEN ? AND ? ",[$start_date, $end_date]);
+                    $previous_amount = count($previous) > 0 ? $previous[0]->Amount ?? 0 : 0;
+
+                    if ($previous_amount > 0 && $total_collection > 0) {
+                        if($previous_amount > $total_collection){
+                            $collection_status = "decrease";
+                            $percentage = ($previous_amount - $total_collection) / $total_collection * 100;
+                        }elseif($previous_amount < $total_collection){
+                            $collection_status = "increase";
+                            $percentage = ($total_collection - $previous_amount) / $total_collection * 100;
+                        }else{
+                            $collection_status = "constant";
+                            $percentage = 0;
+                        }
+                    }else{
+                        $percentage = 0;
+                        $collection_status = "constant";
+                    }
+                }elseif($period == "30 days"){
+                    $counter = 0;
+                    for ($index=0; $index < 7; $index++) {
+                        // collection
+                        $start_date = date("Ymd", strtotime((($counter + 4) * -1)." days"));
+                        $end_date = date("Ymd", strtotime(($counter * -1)." days"));
+                        $collect = DB::select("SELECT SUM(`collection_amount`) AS 'Amount' FROM `milk_collections` WHERE `member_id` = '".$member->user_id."' AND `collection_date` BETWEEN ? AND ?",[$start_date, $end_date]);
+                        $day_data = array("date" => $end_date, "label" => date("dS-M", strtotime($end_date)), "amount" => (count($collect) > 0 ? $collect[0]->Amount ?? 0 : 0));
+                        
+                        // day data
+                        $total_collection += $day_data['amount'];
+                        array_push($data, $day_data);
+
+                        // add two days
+                        $counter+=4;
+                    }
+
+                    // previous 28 days collection
+                    $start_date = date("Ymd", strtotime("-28 days"))."000000";
+                    $end_date = date("Ymd")."235959";
+                    $duration = date("D dS M Y", strtotime($start_date))." - ". date("D dS M Y", strtotime($end_date));
+                    $start_date = date("Ymd", strtotime("-56 days"))."000000";
+                    $end_date = date("Ymd", strtotime("-28 days"))."235959";
+                    $previous = DB::select("SELECT SUM(`collection_amount`) AS 'Amount' FROM `milk_collections` WHERE `member_id` = '".$member->user_id."' AND `collection_date` BETWEEN ? AND ? ",[$start_date, $end_date]);
+                    $previous_amount = count($previous) > 0 ? $previous[0]->Amount ?? 0 : 0;
+
+                    if ($previous_amount > 0 && $total_collection > 0) {
+                        if($previous_amount > $total_collection){
+                            $collection_status = "decrease";
+                            $percentage = ($previous_amount - $total_collection) / $total_collection * 100;
+                        }elseif($previous_amount < $total_collection){
+                            $collection_status = "increase";
+                            $percentage = ($total_collection - $previous_amount) / $total_collection * 100;
+                        }else{
+                            $collection_status = "constant";
+                            $percentage = 0;
+                        }
+                    }else{
+                        $percentage = 0;
+                        $collection_status = "constant";
+                    }
+                }elseif($period == "60 days"){
+                    $counter = 0;
+                    for ($index=0; $index < 7; $index++) {
+                        // collection
+                        $start_date = date("Ymd", strtotime((($counter + 7) * -1)." days"));
+                        $end_date = date("Ymd", strtotime(($counter * -1)." days"));
+                        $collect = DB::select("SELECT SUM(`collection_amount`) AS 'Amount' FROM `milk_collections` WHERE `member_id` = '".$member->user_id."' AND `collection_date` BETWEEN ? AND ?",[$start_date, $end_date]);
+                        $day_data = array("date" => $end_date, "label" => date("dS-M", strtotime($end_date)), "amount" => (count($collect) > 0 ? $collect[0]->Amount ?? 0 : 0));
+                        
+                        // day data
+                        $total_collection += $day_data['amount'];
+                        array_push($data, $day_data);
+
+                        // add two days
+                        $counter+=7;
+                    }
+
+                    // previous 56 days collection
+                    $start_date = date("Ymd", strtotime("-56 days"))."000000";
+                    $end_date = date("Ymd")."235959";
+                    $duration = date("D dS M Y", strtotime($start_date))." - ". date("D dS M Y", strtotime($end_date));
+                    
+                    $start_date = date("Ymd", strtotime("-112 days"))."000000";
+                    $end_date = date("Ymd", strtotime("-56 days"))."235959";
+                    $previous = DB::select("SELECT SUM(`collection_amount`) AS 'Amount' FROM `milk_collections` WHERE `member_id` = '".$member->user_id."' AND `collection_date` BETWEEN ? AND ? ",[$start_date, $end_date]);
+                    $previous_amount = count($previous) > 0 ? $previous[0]->Amount ?? 0 : 0;
+
+                    if ($previous_amount > 0 && $total_collection > 0) {
+                        if($previous_amount > $total_collection){
+                            $collection_status = "decrease";
+                            $percentage = ($previous_amount - $total_collection) / $total_collection * 100;
+                        }elseif($previous_amount < $total_collection){
+                            $collection_status = "increase";
+                            $percentage = ($total_collection - $previous_amount) / $total_collection * 100;
+                        }else{
+                            $collection_status = "constant";
+                            $percentage = 0;
+                        }
+                    }else{
+                        $percentage = 0;
+                        $collection_status = "constant";
+                    }
+                }
+                
+                // return data
+                return response()->json(["success" => true, "previous_amount" => $previous_amount, "greetings" => $time_of_day,"duration" => $duration , "percentage" => $percentage ,"collection_status" => $collection_status,  "total_collection" => $total_collection, "collection_data" => $data, "member_details" => $member_details]);
+            }else{
+                // return the error message
+                return response()->json(["success" => false, "message" => "Invalid user!"]);
+            }
+        }else{
+            return response()->json(["success" => false, "message" => "Invalid user!"]);
+        }
+    }
 }

@@ -43,3 +43,6 @@ Route::post("members/{member_id}/uploadMilk", [MemberController::class, "uploadM
 Route::post("technician/details/{technician_id}", [TechnicianController::class, "getDetails"])->middleware("authenticate");
 Route::post("technician/update/details", [TechnicianController::class, "updateUserDetails"])->middleware("authenticate");
 Route::post("technician/update/credentials", [TechnicianController::class, "updateCredentials"])->middleware("authenticate");
+
+
+Route::post("member/dashboard/{period}", [MemberController::class, "getMemberDashboard"])->middleware("authenticate");
