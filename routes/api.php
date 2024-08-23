@@ -46,3 +46,8 @@ Route::post("technician/update/credentials", [TechnicianController::class, "upda
 
 
 Route::post("member/dashboard/{period}", [MemberController::class, "getMemberDashboard"])->middleware("authenticate");
+Route::post("member/history", [MemberController::class, "getMemberHistory"])->middleware("authenticate");
+Route::post("member/milk_details/{milk_id}", [MemberController::class, "getMilkDetails"])->middleware("authenticate");
+Route::post("member/milk_status/{milk_id}", [MemberController::class, "changeMilkStatus"])->middleware("authenticate");
+Route::post("member/profile", [MemberController::class, "viewProfile"])->middleware("authenticate");
+Route::post("member/updateprofile", [MemberController::class, "updateMember"])->middleware("authenticate");

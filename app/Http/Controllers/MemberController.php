@@ -345,13 +345,125 @@ class MemberController extends Controller
                 }
                 
                 // return data
-                return response()->json(["success" => true, "previous_amount" => $previous_amount, "greetings" => $time_of_day,"duration" => $duration , "percentage" => $percentage ,"collection_status" => $collection_status,  "total_collection" => $total_collection, "collection_data" => $data, "member_details" => $member_details]);
+                return response()->json(["success" => true, "previous_amount" => $previous_amount, "greetings" => $time_of_day,"duration" => $duration , "percentage" => round($percentage, 0) ,"collection_status" => $collection_status,  "total_collection" => $total_collection, "collection_data" => $data, "member_details" => $member_details]);
             }else{
                 // return the error message
                 return response()->json(["success" => false, "message" => "Invalid user!"]);
             }
         }else{
             return response()->json(["success" => false, "message" => "Invalid user!"]);
+        }
+    }
+
+    function getMemberHistory(Request $request){
+        // authentication_code
+        $authentication_code = $request->header("maru-authentication_code");
+        
+        // get the member data
+        $member = Credential::where("authentication_code", $authentication_code)->first();
+        
+        // get the member history
+        if($member){
+            // member
+            $start_date = date("Ymd", strtotime("-30 days"))."000000";
+            $end_date = date("Ymd")."235959";
+            $collection_history = DB::select("SELECT * FROM `milk_collections` WHERE `member_id` = ? AND `collection_date` BETWEEN ? AND ? ORDER BY `collection_id` DESC", [$member->user_id, $start_date, $end_date]);
+            $count = DB::select("SELECT SUM(collection_amount) AS 'total' FROM `milk_collections` WHERE `member_id` = ? AND `collection_date` BETWEEN ? AND ?", [$member->user_id, $start_date, $end_date]);
+            
+            // collection history iteration
+            foreach ($collection_history as $key => $value) {
+                $collection_history[$key]->date = date("D dS M Y", strtotime($value->collection_date));
+                $collection_history[$key]->time = date("h:iA", strtotime($value->collection_date));
+            }
+
+            // collection history
+            return response()->json(["success" => true, "count" => number_format(count($count) > 0 ? ($count[0]->total ?? 0) : 0), "collection_history" => $collection_history]);
+        }else{
+            // collection history
+            return response()->json(["success" => false, "message" => "An error has occured!"]);
+        }
+    }
+
+    function getMilkDetails($collection_id){
+        $milk_details = DB::select("SELECT * FROM `milk_collections` WHERE `collection_id` = ?", [$collection_id]);
+        if (count($milk_details) > 0) {
+            $milk_details[0]->date = date("D, dS M Y", strtotime($milk_details[0]->collection_date));
+            $milk_details[0]->time = date("h:iA", strtotime($milk_details[0]->collection_date));
+            return response()->json(["success" => true, "milk_details" => $milk_details[0]]);
+        }else{
+            return response()->json(["success" => false, "message" => "Collection details not found, It could be deleted!"]);
+        }
+    }
+
+    function changeMilkStatus(Request $request, $milk_id){
+        $status = $request->input("status");
+        $milk_status = DB::update("UPDATE `milk_collections` SET `collection_status` = ? WHERE `collection_id` = ?", [$status, $milk_id]);
+        return response()->json(["success" => true, "message" => "Update has been done successfully!"]);
+    }
+    
+    // view profile
+    function viewProfile(Request $request){
+        // authentication_code
+        $authentication_code = $request->header("maru-authentication_code");
+
+        // check if the authentication code is legit!
+        $authenticated = Credential::where("authentication_code", $authentication_code)->first();
+
+        // authenticated
+        if ($authenticated) {
+            $member_details = Member::find($authenticated->user_id);
+            $collection_days = DB::select("SELECT COUNT(*) AS 'total' FROM `milk_collections` WHERE `member_id` = ?",[$member_details->user_id]);
+            $total_collection = DB::select("SELECT SUM(`collection_amount`) AS 'total' FROM `milk_collections` WHERE `member_id` = ?", [$member_details->user_id]);
+            
+            // return value
+            return response()->json(["success" => true, "collection_days" => number_format(count($collection_days) > 0 ? $collection_days[0]->total ?? 0 : 0), "total_collection" => number_format(count($total_collection) > 0 ? $total_collection[0]->total ?? 0 : 0), "member_details" => $member_details]);
+        }else{
+            // return value
+            return response()->json(["success" => false, "message" => "Invalid token, Login and try again!"]);
+        }
+    }
+
+    // update the member
+    function updateMember(Request $request){
+
+        // authentication_code
+        $authentication_code = $request->header("maru-authentication_code");
+
+        // fullname
+        $fullname = $request->input("fullname");
+        $phone_number = $request->input("phone_number");
+        $gender = $request->input("gender");
+        $email = $request->input("email");
+        $residence = $request->input("residence");
+        $region = $request->input("region");
+
+        // update
+
+        // check if the authentication code is legit!
+        $authenticated = Credential::where("authentication_code", $authentication_code)->first();
+
+        // authenticated
+        if ($authenticated) {
+            $member_details = Member::find($authenticated->user_id);
+            if ($member_details != null) {
+                $member_details->fullname = $fullname;
+                $member_details->gender = $gender;
+                $member_details->phone_number = $phone_number;
+                $member_details->email = $email;
+                $member_details->residence = $residence;
+                $member_details->region = $region;
+                $member_details->user_id = $authenticated->user_id;
+                $member_details->save();
+
+                // return value
+                return response()->json(["success" => true, "message" => "Changes saved successfully!"]);
+            }else{
+                // return value
+                return response()->json(["success" => false, "message" => "Invalid token, Login and try again!"]);
+            }
+        }else{
+            // return value
+            return response()->json(["success" => false, "message" => "Invalid token, Login and try again!"]);
         }
     }
 }
