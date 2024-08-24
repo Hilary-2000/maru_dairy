@@ -284,6 +284,7 @@ class CollectionController extends Controller
         
         $confirmed = 0;
         $not_confirmed = 0;
+        $rejected = 0;
         
         // go through to get the confirmed stats
         foreach ($collection_history as $key => $value) {
@@ -291,13 +292,15 @@ class CollectionController extends Controller
             $collection_history[$key]->time = date("H:iA", strtotime($value->collection_date));
             if ($value->collection_status == 0) {
                 $not_confirmed+=1;
-            }else{
+            }elseif ($value->collection_status == 1) {
                 $confirmed+=1;
+            }else{
+                $rejected+=1;
             }
         }
 
         // confirmed data
-        return response()->json(["success" => true, "confirmed" => $confirmed, "not_confirmed" => $not_confirmed, "collection_history" => $collection_history]);
+        return response()->json(["success" => true, "rejected" => $rejected, "confirmed" => $confirmed, "not_confirmed" => $not_confirmed, "collection_history" => $collection_history]);
     }
 
     function collectionDetail($collection_id){
@@ -389,7 +392,6 @@ class CollectionController extends Controller
         $collection_history = DB::select("SELECT * FROM `milk_collections` AS MC
                                         LEFT JOIN members AS M
                                         ON MC.member_id = M.user_id WHERE MC.collection_status = ? AND MC.collection_date BETWEEN ? AND ? ORDER BY MC.collection_id DESC", [$collection_status, $start, $end]);
-        
         
         // go through to get the confirmed stats
         foreach ($collection_history as $key => $value) {

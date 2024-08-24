@@ -1,9 +1,11 @@
 <?php
 
+use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\Credentials;
 use App\Http\Controllers\MemberController;
 use App\Http\Controllers\TechnicianController;
+use App\Models\Administrator;
 use App\Models\Collection;
 use App\Models\Technician;
 use Illuminate\Http\Request;
@@ -51,3 +53,5 @@ Route::post("member/milk_details/{milk_id}", [MemberController::class, "getMilkD
 Route::post("member/milk_status/{milk_id}", [MemberController::class, "changeMilkStatus"])->middleware("authenticate");
 Route::post("member/profile", [MemberController::class, "viewProfile"])->middleware("authenticate");
 Route::post("member/updateprofile", [MemberController::class, "updateMember"])->middleware("authenticate");
+
+Route::post("admin/dashboard/{period}", [AdministratorController::class, "admin_dashboard"])->middleware("authenticate");

@@ -345,7 +345,7 @@ class MemberController extends Controller
                 }
                 
                 // return data
-                return response()->json(["success" => true, "previous_amount" => $previous_amount, "greetings" => $time_of_day,"duration" => $duration , "percentage" => round($percentage, 0) ,"collection_status" => $collection_status,  "total_collection" => $total_collection, "collection_data" => $data, "member_details" => $member_details]);
+                return response()->json(["success" => true, "previous_amount" => $previous_amount, "greetings" => $time_of_day,"duration" => $duration , "percentage" => round($percentage, 0) ,"collection_status" => $collection_status,  "total_collection" => round($total_collection, 2), "collection_data" => $data, "member_details" => $member_details]);
             }else{
                 // return the error message
                 return response()->json(["success" => false, "message" => "Invalid user!"]);
