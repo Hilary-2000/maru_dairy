@@ -194,7 +194,7 @@ class MemberController extends Controller
                     // previous 7 days collection
                     $start_date = date("Ymd", strtotime("-7 days"))."000000";
                     $end_date = date("Ymd")."235959";
-                    $duration = date("D dS M Y", strtotime($start_date))." - ". date("D dS M Y", strtotime($end_date));
+                    $duration = date("dS M Y", strtotime($start_date))." - ". date("dS M Y", strtotime($end_date));
                     $start_date = date("Ymd", strtotime("-14 days"))."000000";
                     $end_date = date("Ymd", strtotime("-7 days"))."235959";
                     $previous = DB::select("SELECT SUM(`collection_amount`) AS 'Amount' FROM `milk_collections` WHERE `member_id` = '".$member->user_id."' AND `collection_date` BETWEEN ? AND ? ",[$start_date, $end_date]);
@@ -238,7 +238,7 @@ class MemberController extends Controller
                     // previous 14 days collection
                     $start_date = date("Ymd", strtotime("-14 days"))."000000";
                     $end_date = date("Ymd")."235959";
-                    $duration = date("D dS M Y", strtotime($start_date))." - ". date("D dS M Y", strtotime($end_date));
+                    $duration = date("dS M Y", strtotime($start_date))." - ". date("dS M Y", strtotime($end_date));
                     $start_date = date("Ymd", strtotime("-28 days"))."000000";
                     $end_date = date("Ymd", strtotime("-14 days"))."235959";
                     $previous = DB::select("SELECT SUM(`collection_amount`) AS 'Amount' FROM `milk_collections` WHERE `member_id` = '".$member->user_id."' AND `collection_date` BETWEEN ? AND ? ",[$start_date, $end_date]);
@@ -279,7 +279,7 @@ class MemberController extends Controller
                     // previous 28 days collection
                     $start_date = date("Ymd", strtotime("-28 days"))."000000";
                     $end_date = date("Ymd")."235959";
-                    $duration = date("D dS M Y", strtotime($start_date))." - ". date("D dS M Y", strtotime($end_date));
+                    $duration = date("dS M Y", strtotime($start_date))." - ". date("dS M Y", strtotime($end_date));
                     $start_date = date("Ymd", strtotime("-56 days"))."000000";
                     $end_date = date("Ymd", strtotime("-28 days"))."235959";
                     $previous = DB::select("SELECT SUM(`collection_amount`) AS 'Amount' FROM `milk_collections` WHERE `member_id` = '".$member->user_id."' AND `collection_date` BETWEEN ? AND ? ",[$start_date, $end_date]);
@@ -320,7 +320,7 @@ class MemberController extends Controller
                     // previous 56 days collection
                     $start_date = date("Ymd", strtotime("-56 days"))."000000";
                     $end_date = date("Ymd")."235959";
-                    $duration = date("D dS M Y", strtotime($start_date))." - ". date("D dS M Y", strtotime($end_date));
+                    $duration = date("dS M Y", strtotime($start_date))." - ". date("dS M Y", strtotime($end_date));
                     
                     $start_date = date("Ymd", strtotime("-112 days"))."000000";
                     $end_date = date("Ymd", strtotime("-56 days"))."235959";

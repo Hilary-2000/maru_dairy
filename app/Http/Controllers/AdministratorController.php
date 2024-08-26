@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Administrator;
 use App\Models\Credential;
+use App\Models\Member;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -13,7 +14,7 @@ class AdministratorController extends Controller
     function admin_dashboard(Request $request, $period){
         // get the milk collection statistics
         $start = date("Ymd", strtotime(($period*-1)." days"))."000000";
-        $end = date("Ymd", strtotime($period." days"))."235959";
+        $end = date("Ymd")."235959";
         $starts = "20200101000000";
         $report_period = date("dS M Y", strtotime($start))." - ".date("dS M Y", strtotime($end));
 
@@ -34,7 +35,7 @@ class AdministratorController extends Controller
 
         $milk_collection_status = "constant";
         $milk_precentage = 0;
-        if($current_milk_collection > 0 && $prev_milk_collection > 0){
+        if($current_milk_collection > 0 && $previous_milk_collection > 0){
             if($current_milk_collection > $previous_milk_collection){
                 $milk_collection_status = "increase";
                 $milk_precentage = (($current_milk_collection - $previous_milk_collection) / $previous_milk_collection) * 100;
@@ -164,5 +165,195 @@ class AdministratorController extends Controller
         // milk_collection
         return response()->json(["success" => true, "report_period" => $report_period, "member_data" => $member_data, "time_of_day" => $time_of_day, "collection_status" => $milk_collection_status, "collection_percentage" => $milk_precentage, "total_collection" => $milk_collection[0]->total ?? 0, "collection_graph_data" => $collection_graph_data, "members_present" => $members_present[0]->total ?? 0, "member_present_graph" => $member_present_graph_data, "members_registered" => $member_registered[0]->total ?? 0,  "member_status" => $member_status, "member_percentage" => $member_percentage, "member_registered_graph" => $member_registered_graph_data]);
 
+    }
+
+    // MEMBERS
+    function admin_members(){
+        $members = DB::select("SELECT * FROM `members` ORDER BY `user_id` DESC");
+        return response()->json(["success" => true, "members"=>$members]);
+    }
+    
+    // view profile
+    function member_details($member_id){
+        $member_details = Member::find($member_id);
+        if ($member_details) {
+            $collection_days = DB::select("SELECT COUNT(*) AS 'total' FROM `milk_collections` WHERE `member_id` = ?",[$member_details->user_id]);
+            $total_collection = DB::select("SELECT SUM(`collection_amount`) AS 'total' FROM `milk_collections` WHERE `member_id` = ?", [$member_details->user_id]);
+            
+            // return value
+            return response()->json(["success" => true, "collection_days" => number_format(count($collection_days) > 0 ? $collection_days[0]->total ?? 0 : 0), "total_collection" => number_format(count($total_collection) > 0 ? $total_collection[0]->total ?? 0 : 0), "member_details" => $member_details]);
+        }else{
+            return response()->json(["success" => false, "message" => "Member has been not been found!"]);
+        }
+    }
+
+    function updateMember(Request $request){
+        $fullname = $request->input("fullname");
+        $gender = $request->input("gender");
+        $phone_number = $request->input("phone_number");
+        $email = $request->input("email");
+        $animals = $request->input("animals");
+        $residence = $request->input("residence");
+        $region = $request->input("region");
+        $membership = $request->input("membership");
+        $national_id = $request->input("national_id");
+        $user_id = $request->input("user_id");
+
+        // update the member
+        $member = Member::find($user_id);
+        if ($member) {
+            // check for national id except him
+            $find_natid = DB::select("SELECT * FROM `members` WHERE `national_id` = ? AND `user_id` != ?",[$national_id, $user_id]);
+            if (count($find_natid) > 0) {
+                return response()->json(["success" => false, "message" => "The national id provided has been used!"]);
+            }
+
+            // check for national id except him
+            $find_phone = DB::select("SELECT * FROM `members` WHERE `phone_number` = ? AND `user_id` != ?",[$phone_number, $user_id]);
+            if (count($find_phone) > 0) {
+                return response()->json(["success" => false, "message" => "The phone number provided has been used!"]);
+            }
+
+            // check for national id except him
+            $find_membership = DB::select("SELECT * FROM `members` WHERE `membership` = ? AND `user_id` != ?",[$membership, $user_id]);
+            if (count($find_membership) > 0) {
+                return response()->json(["success" => false, "message" => "The membership number provided has been used!"]);
+            }
+
+            $member->fullname = $fullname;
+            $member->gender = $gender;
+            $member->phone_number = $phone_number;
+            $member->email = $email;
+            $member->animals = $animals;
+            $member->residence = $residence;
+            $member->region = $region;
+            $member->membership = $membership;
+            $member->national_id = $national_id;
+            $member->save();
+
+            // return
+            return response()->json(["success" => true, "message" => "Member has been updated successfully!"]);
+        }else{
+            return response()->json(["success" => false, "message" => "Update has failed, try again later!"]);
+        }
+    }
+
+    function getMemberHistory($member_id){
+        
+        // get the member data
+        $member = Member::find($member_id);
+        
+        // get the member history
+        if($member){
+            // member
+            $collection_history = DB::select("SELECT * FROM `milk_collections` WHERE `member_id` = ? AND `collection_date` ORDER BY `collection_id` DESC", [$member->user_id]);
+            $count = DB::select("SELECT SUM(collection_amount) AS 'total' FROM `milk_collections` WHERE `member_id` = ?", [$member->user_id]);
+            
+            // collection history iteration
+            foreach ($collection_history as $key => $value) {
+                $collection_history[$key]->date = date("D dS M Y", strtotime($value->collection_date));
+                $collection_history[$key]->time = date("h:iA", strtotime($value->collection_date));
+            }
+
+            // collection history
+            return response()->json(["success" => true, "count" => number_format(count($count) > 0 ? ($count[0]->total ?? 0) : 0), "collection_history" => $collection_history]);
+        }else{
+            // collection history
+            return response()->json(["success" => false, "message" => "An error has occured!"]);
+        }
+    }
+
+    function addNewMember(Request $request){
+        // phone number
+        $phone_number = $request->input("phone_number");
+        $national_id = $request->input("national_id");
+        $membership = $request->input("membership");
+
+        // check for national id except him
+        $find_natid = DB::select("SELECT * FROM `members` WHERE `national_id` = ?",[$national_id]);
+        if (count($find_natid) > 0) {
+            return response()->json(["success" => false, "message" => "The national id provided has been used!"]);
+        }
+
+        // check for national id except him
+        $find_phone = DB::select("SELECT * FROM `members` WHERE `phone_number` = ?",[$phone_number]);
+        if (count($find_phone) > 0) {
+            return response()->json(["success" => false, "message" => "The phone number provided has been used!"]);
+        }
+
+        // check for national id except him
+        $find_membership = DB::select("SELECT * FROM `members` WHERE `membership` = ?",[$membership]);
+        if (count($find_membership) > 0) {
+            return response()->json(["success" => false, "message" => "The membership number provided has been used!"]);
+        }
+
+
+        // insert a new member
+        $member = new Member();
+        $member->fullname = $request->input("fullname");
+        $member->phone_number = $request->input("phone_number");
+        $member->email = $request->input("email");
+        $member->residence = $request->input("residence");
+        $member->region = $request->input("region");
+        $member->national_id = $request->input("national_id");
+        $member->animals = $request->input("animals");
+        $member->membership = $request->input("membership");
+        $member->gender = $request->input("gender");
+        $member->username = $member->phone_number;
+        $member->password = "1234";
+        $member->save();
+
+        $credential = new Credential();
+        $credential->user_id = $member->user_id;
+        $credential->username = $member->phone_number;
+        $credential->password = "1234";
+        $credential->user_type = "4";
+        $credential->save();
+
+        return response()->json(["success" => true, "message" => "User added successfully!"]);
+    }
+
+    function viewProfile(Request $request){
+        // authentication_code
+        $authentication_code = $request->header("maru-authentication_code");
+        
+        // credential
+        $credential = Credential::where("authentication_code", $authentication_code)->first();
+        if($credential){
+            // find user
+            $administrator = Administrator::find($credential->user_id);
+            if ($administrator) {
+                return response()->json(["success" => true, "administrator" => $administrator]);
+            }else{
+                return response()->json(["success" => false, "message" => "Your data can`t be found!"]);
+            }
+        }else{
+            return response()->json(["success" => false, "message" => "Your data can`t be found!"]);
+        }
+    }
+    function updateProfile(Request $request){
+        // authentication_code
+        $authentication_code = $request->header("maru-authentication_code");
+        // credential
+        $credential = Credential::where("authentication_code", $authentication_code)->first();
+        if($credential){
+            // find user
+            $administrator = Administrator::find($credential->user_id);
+            if ($administrator) {
+                $administrator->fullname = $request->input("fullname");
+                $administrator->phone_number = $request->input("phone_number");
+                $administrator->email = $request->input("email");
+                $administrator->residence = $request->input("residence");
+                $administrator->region = $request->input("region");
+                $administrator->save();
+
+                // return response
+                return response()->json(["success" => true, "message" => "Update has been done successfully!"]);
+            }else{
+                return response()->json(["success" => false, "message" => "Your data can`t be found!"]);
+            }
+        }else{
+            return response()->json(["success" => false, "message" => "Your data can`t be found!"]);
+        }
     }
 }

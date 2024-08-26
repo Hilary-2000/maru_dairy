@@ -55,3 +55,10 @@ Route::post("member/profile", [MemberController::class, "viewProfile"])->middlew
 Route::post("member/updateprofile", [MemberController::class, "updateMember"])->middleware("authenticate");
 
 Route::post("admin/dashboard/{period}", [AdministratorController::class, "admin_dashboard"])->middleware("authenticate");
+Route::post("admin/members", [AdministratorController::class, "admin_members"])->middleware("authenticate");
+Route::post("admin/members/{member_id}", [AdministratorController::class, "member_details"])->middleware("authenticate");
+Route::post("admin/member/update", [AdministratorController::class, "updateMember"])->middleware("authenticate");
+Route::post("admin/member/history/{member_id}", [AdministratorController::class, "getMemberHistory"])->middleware("authenticate");
+Route::post("admin/member/new", [AdministratorController::class, "addNewMember"])->middleware("authenticate");
+Route::post("admin/member/info", [AdministratorController::class, "viewProfile"])->middleware("authenticate");
+Route::post("admin/member/update_profile", [AdministratorController::class, "updateProfile"])->middleware("authenticate");
