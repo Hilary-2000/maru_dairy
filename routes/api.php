@@ -62,3 +62,7 @@ Route::post("admin/member/history/{member_id}", [AdministratorController::class,
 Route::post("admin/member/new", [AdministratorController::class, "addNewMember"])->middleware("authenticate");
 Route::post("admin/member/info", [AdministratorController::class, "viewProfile"])->middleware("authenticate");
 Route::post("admin/member/update_profile", [AdministratorController::class, "updateProfile"])->middleware("authenticate");
+Route::post("admin/member/milk_prices", [AdministratorController::class, "getMilkPrices"])->middleware("authenticate");
+Route::post("admin/milk_price/insert", [AdministratorController::class, "insertDate"])->middleware("authenticate");
+Route::post("admin/milk_price/details/{price_id}", [AdministratorController::class, "getMilkDetails"])->middleware("authenticate");
+Route::post("admin/milk_price/update", [AdministratorController::class, "updateMilk"])->middleware("authenticate");

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Administrator;
 use App\Models\Credential;
 use App\Models\Member;
+use App\Models\MilkPrice;
+use DateTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -300,6 +302,7 @@ class AdministratorController extends Controller
         $member->membership = $request->input("membership");
         $member->gender = $request->input("gender");
         $member->username = $member->phone_number;
+        $member->date_registered = date("YmdHis");
         $member->password = "1234";
         $member->save();
 
@@ -331,6 +334,8 @@ class AdministratorController extends Controller
             return response()->json(["success" => false, "message" => "Your data can`t be found!"]);
         }
     }
+
+    // update profile
     function updateProfile(Request $request){
         // authentication_code
         $authentication_code = $request->header("maru-authentication_code");
@@ -354,6 +359,81 @@ class AdministratorController extends Controller
             }
         }else{
             return response()->json(["success" => false, "message" => "Your data can`t be found!"]);
+        }
+    }
+
+    function getMilkPrices(){
+        $milk_prices = DB::select("SELECT * FROM `milk_prices` ORDER BY `effect_date` DESC");
+        for ($index=count($milk_prices) - 1; $index >= 0; $index--) {
+            $milk_prices[$index]->end_date = $index > 0 ? $this->modifyDate($milk_prices[$index-1]->effect_date, 1, "subtract") : date("YmdHis");
+            $milk_prices[$index]->effect_date = date("dS M Y", strtotime($milk_prices[$index]->effect_date));
+            $milk_prices[$index]->end_date = date("dS M Y", strtotime($milk_prices[$index]->end_date));
+            $milk_prices[$index]->amount = (round($milk_prices[$index]->amount, 2));
+        }
+
+        // current_price
+        $current_price = DB::select("SELECT * FROM `milk_prices` ORDER BY `effect_date` DESC");
+        return response()->json(["success" => true, "milk_prices" => $milk_prices, "current_price" => (round((count($current_price) > 0 ? $current_price[0]->amount : 0), 2))]);
+    }
+
+    // function to reduce the day
+    function modifyDate($date, $days, $operation = 'add') {
+        // Create a DateTime object from the given date
+        $dateTime = new DateTime($date);
+        
+        // Determine whether to add or subtract days
+        if ($operation === 'add') {
+            $dateTime->modify("+{$days} days");
+        } elseif ($operation === 'subtract') {
+            $dateTime->modify("-{$days} days");
+        }
+        
+        // Return the modified date in the format Y-m-d
+        return $dateTime->format('YmdHis');
+    }
+
+    function insertDate(Request $request){
+        $amount = $request->input("amount");
+        $effect_date = $request->input("effect_date");
+        $status = $request->input("status");
+        
+        // insert the data
+        $milk_price = new MilkPrice();
+        $milk_price->amount = $amount;
+        $milk_price->status = $status;
+        $milk_price->effect_date = date("YmdHis", strtotime($effect_date));
+        $milk_price->save();
+        
+        // insert data
+        return response()->json(["success" => true, "message" => "Data has been inserted successfully!"]);
+    }
+
+    // get milk details
+    function getMilkDetails($milk_id){
+        $milk_price_details = MilkPrice::find($milk_id);
+        if($milk_price_details){
+            $milk_price_details->effect_date = date("Y-m-d H:i:s", strtotime($milk_price_details->effect_date));
+
+            // current_price
+            $current_price = DB::select("SELECT * FROM `milk_prices` ORDER BY `effect_date` DESC");
+            return response()->json(["success" => true, "milk_price_details" => $milk_price_details, "message" => "Milk details found!", "current_price" => (round((count($current_price) > 0 ? $current_price[0]->amount : 0), 2))]);
+        }else{
+            return response()->json(["success" => false, "message" => "Milk details can`t be found!"]);
+        }
+    }
+
+    function updateMilk(Request $request){
+        // update the milk details
+        $milk_price_details = MilkPrice::find($request->input("price_id"));
+        if ($milk_price_details) {
+            // update the milk details
+            $milk_price_details->amount = $request->input("amount");
+            $milk_price_details->status = $request->input("status");
+            $milk_price_details->effect_date = date("YmdHis", strtotime($request->input("effect_date")));
+            $milk_price_details->save();
+            return response()->json(['success' => true, "message" => "Update has been done successfully!"]);
+        }else{
+            return response()->json(['success' => false, "message" => "Invalid milk details, Maybe it`s deleted!"]);
         }
     }
 }
