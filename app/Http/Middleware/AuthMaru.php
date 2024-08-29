@@ -19,6 +19,10 @@ class AuthMaru
         // authentication_code
         $authentication_code = $request->header('maru-authentication_code');
 
+        if($authentication_code == "" || $authentication_code == null){
+            return response()->json(["success" => false, "message" => "Authentication failed!"], 401);
+        }
+
         // check if the authentication code is legit!
         $authenticated = Credential::where("authentication_code", $authentication_code)->first();
 

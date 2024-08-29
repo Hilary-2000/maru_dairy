@@ -363,17 +363,34 @@ class AdministratorController extends Controller
     }
 
     function getMilkPrices(){
-        $milk_prices = DB::select("SELECT * FROM `milk_prices` ORDER BY `effect_date` DESC");
-        for ($index=count($milk_prices) - 1; $index >= 0; $index--) {
+        $milk_prices = DB::select("SELECT * FROM `milk_prices` ORDER BY `price_id` DESC");
+        $found = false;
+        $current_price = 0;
+        for ($index = count($milk_prices) - 1; $index >= 0; $index--) {
             $milk_prices[$index]->end_date = $index > 0 ? $this->modifyDate($milk_prices[$index-1]->effect_date, 1, "subtract") : date("YmdHis");
             $milk_prices[$index]->effect_date = date("dS M Y", strtotime($milk_prices[$index]->effect_date));
             $milk_prices[$index]->end_date = date("dS M Y", strtotime($milk_prices[$index]->end_date));
             $milk_prices[$index]->amount = (round($milk_prices[$index]->amount, 2));
         }
 
-        // current_price
-        $current_price = DB::select("SELECT * FROM `milk_prices` ORDER BY `effect_date` DESC");
-        return response()->json(["success" => true, "milk_prices" => $milk_prices, "current_price" => (round((count($current_price) > 0 ? $current_price[0]->amount : 0), 2))]);
+        for ($index = 0; $index < count($milk_prices); $index++) {
+            // current price
+            $milk_prices[$index]->current = $milk_prices[$index]->status == 1 && !$found;
+            $milk_prices[$index]->effect_date = date("Ymd", strtotime($milk_prices[$index]->effect_date)) > date("Ymd", strtotime($milk_prices[$index]->end_date)) ? "inactive" : $milk_prices[$index]->effect_date;
+            $milk_prices[$index]->end_date =  $milk_prices[$index]->effect_date == "inactive" ? "inactive" : $milk_prices[$index]->end_date;
+            
+            // check milk prices
+            if ($milk_prices[$index]->status == 1 && !$found) {
+                $found = true;
+                $current_price = $milk_prices[$index]->amount;
+            }
+        }
+        
+        // last_date
+        $last_date = count($milk_prices) > 0 ? date("Y-m-d", strtotime($this->modifyDate($milk_prices[0]->effect_date, 1, "add"))) : date("Y-m-d", strtotime("-5 years"));
+
+        // return value
+        return response()->json(["success" => true, "milk_prices" => $milk_prices, "current_price" => $current_price, "last_date" => $last_date]);
     }
 
     // function to reduce the day
@@ -415,8 +432,22 @@ class AdministratorController extends Controller
             $milk_price_details->effect_date = date("Y-m-d H:i:s", strtotime($milk_price_details->effect_date));
 
             // current_price
-            $current_price = DB::select("SELECT * FROM `milk_prices` ORDER BY `effect_date` DESC");
-            return response()->json(["success" => true, "milk_price_details" => $milk_price_details, "message" => "Milk details found!", "current_price" => (round((count($current_price) > 0 ? $current_price[0]->amount : 0), 2))]);
+            $current_price = DB::select("SELECT * FROM `milk_prices` ORDER BY `price_id` DESC");
+            $last_date = date("Y-m-d", strtotime("-5 years"));
+            if (count($current_price) > 0) {
+                foreach ($current_price as $key => $value) {
+                    if(count($current_price) > 1){
+                        if ($key+1 == $milk_id) {
+                            $last_date = date("Y-m-d", strtotime($this->modifyDate($value->effect_date, 1)));
+                            break;
+                        }
+                    }else{
+                        $last_date = date("Y-m-d", strtotime("-5 years"));
+                        break;
+                    }
+                }
+            }
+            return response()->json(["success" => true, "minimum_date" => $last_date, "milk_price_details" => $milk_price_details, "message" => "Milk details found!", "current_price" => (round((count($current_price) > 0 ? $current_price[0]->amount : 0), 2))]);
         }else{
             return response()->json(["success" => false, "message" => "Milk details can`t be found!"]);
         }
