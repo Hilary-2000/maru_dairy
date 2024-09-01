@@ -503,4 +503,180 @@ class MemberController extends Controller
             return response()->json(["success" => false, "message" => "Member not found, maybe they have been deleted!"]);
         }
     }
+
+    // membership
+    function memberMembership($member_id){
+        $member_details = Member::find($member_id);
+        if($member_details){
+            // set the member date
+            $member_details->date_joined = date("D dS M Y", strtotime($member_details->date_registered));
+
+            // get last month`s collection amount
+            $last_month = date("Ym", strtotime("-1 month"));
+            $current_month = date("Ym");
+            
+            $admin = new AdministratorController();
+            // last months collections
+            $start = $last_month."01000000";
+            $end = $last_month."31000000";
+            $last_month_collection = DB::select("SELECT * FROM `milk_collections` WHERE `collection_date` BETWEEN ? AND ?", [$start, $end]);
+            $last_month_pay = $admin->getTotalPrice($last_month_collection);
+
+            // current months collections
+            $start = $current_month."01000000";
+            $end = $current_month."31000000";
+            $current_month_collection = DB::select("SELECT * FROM `milk_collections` WHERE `collection_date` BETWEEN ? AND ?", [$start, $end]);
+            $current_month_pay = $admin->getTotalPrice($current_month_collection);
+            
+            // joining fees
+            $joining_fees = $this->getJoiningFees($member_details->date_registered);
+            $deduction_paid = DB::select("SELECT SUM(`deduction_amount`) AS 'total' FROM `deductions` WHERE `deduction_type` = 'joining_fees' AND `member_id` = '".$member_id."'");
+            $joining_fees_balance = $joining_fees - ($deduction_paid[0]->total ?? 0);
+
+            // membership balance
+            $membership_amount = $member_details->membership_fees;
+            $membership_amount_paid = DB::select("SELECT SUM(`deduction_amount`) AS 'total' FROM `deductions` WHERE `deduction_type` = 'membership_fees' AND `member_id` = '".$member_id."'");
+            $membership_amount_balance = $membership_amount - ($membership_amount_paid[0]->total ?? 0);
+
+            // annual subscription
+            $annual_subscription_balance = $this->annual_subscription_balance($member_id);
+            
+            // annual subscription and payment
+            $annual_sub_n_payment = $this->annual_subscription_and_payment($member_id);
+
+            // payments
+            $monthly_payments = DB::select("SELECT * FROM `payments` WHERE `member_id` = ? ORDER BY `payment_id` DESC", [$member_id]);
+            
+            // monthly payment
+            foreach ($monthly_payments as $key => $value) {
+                $monthly_payments[$key]->payment_amount = number_format($value->payment_amount, 2);
+                $monthly_payments[$key]->clear_date = date("dS M Y", strtotime($value->date_paid));
+                $monthly_payments[$key]->clear_month = date("dS M Y", strtotime($value->month_paid_for));
+                $monthly_payments[$key]->transaction_cost = $this->mpesa_transaction_cost($value->payment_amount);
+                $monthly_payments[$key]->payment_amount = number_format($value->payment_amount, 2);
+            }
+            return response()->json(
+                [
+                    "success" => true,
+                    "member_details" => $member_details,
+                    "last_month" => date("Y-M" ,strtotime($last_month."01")),
+                    "curr_month" => date("Y-M" ,strtotime($current_month."01")),
+                    "last_month_pay" => number_format($last_month_pay, 2),
+                    "current_month_pay" => number_format($current_month_pay, 2),
+                    "joining_fees_balance" => number_format($joining_fees_balance, 2),
+                    "membership_amount_balance" => number_format($membership_amount_balance, 2),
+                    "annual_subscription_balance" => number_format($annual_subscription_balance, 2),
+                    "annual_sub_n_payment" => $annual_sub_n_payment,
+                    "monthly_payments" => $monthly_payments
+                ]
+            );
+        }else{
+            return response()->json(["success" => false, "message" => "Member not found, maybe deleted!"]);
+        }
+    }
+
+    function getJoiningFees($date_joined){
+        $month = date("m", strtotime($date_joined));
+        if ($month >= 1 && $month <= 3) {
+            return 1000;
+        }elseif ($month >= 4 && $month <= 6) {
+            return 750;
+        }elseif ($month >= 7 && $month <= 9) {
+            return 500;
+        }elseif ($month >= 10 && $month <= 12) {
+            return 250;
+        }else{
+            return 1000;
+        }
+    }
+
+    function annual_subscription_balance($member_id){
+        $member = Member::find($member_id);
+        if ($member) {
+            $date_joined = date("Y", strtotime($member->date_registered));
+            $current_year = date("Y");
+
+            // return current year
+            $annual_subscription = ($current_year - $date_joined) * 1000;
+
+            // amount paid on behalf of the subscription fees
+            $annual_subscription_paid = DB::select("SELECT SUM(`deduction_amount`) AS 'total' FROM `deductions` WHERE `deduction_type` = 'membership_fees' AND `member_id` = '".$member_id."'");
+
+            // balance
+            $annual_subscription_balance = $annual_subscription - ($annual_subscription_paid[0]->total ?? 0);
+
+            return $annual_subscription_balance;
+        }else{
+            return 0;
+        }
+    }
+
+    function annual_subscription_and_payment($member_id){
+        $member = Member::find($member_id);
+        if($member){
+            $current_year = date("Y");
+            $year_joined = date("Y",strtotime($member->date_registered));
+
+            // loop through the year
+            $subscriptions = [];
+            for ($year = $current_year; $year >= $year_joined; $year--) {
+                $data = [];
+                // period
+                $start = $year."0101000000";
+                $end = $year."1231235959";
+
+                // subscription payments
+                $deduction = DB::select("SELECT * FROM `deductions` WHERE `deduction_date` BETWEEN ? AND ?", [$start, $end]);
+
+                // new annual payment
+                $annual_subscription = array("id" => "-1", "deduction_type" => "increase", "deduction_amount" => "1000", "balance" => "1000", "member_id" => $member_id, "deduction_date" => $year."0101000000", "clear_date" => date("dS M Y", strtotime($year."0101000000")));
+                array_push($data, $annual_subscription);
+
+                // merge annual payment and its deductions
+                $new_data = array_merge($data,$deduction);
+                
+                $push_data = array("year" => $year, "subscription" => $new_data);
+                array_push($subscriptions,$push_data);
+            }
+
+            return $subscriptions;
+        }else{
+            return [];
+        }
+    }
+
+    function mpesa_transaction_cost($amount){
+        $transaction_cost = 0;
+        if($amount > 100 && $amount <= 500 ){
+            $transaction_cost = 7;
+        }elseif($amount > 500 && $amount <= 1000){
+            $transaction_cost = 13;
+        }elseif($amount > 1000 && $amount <= 1500){
+            $transaction_cost = 23;
+        }elseif($amount > 1500 && $amount <= 2500){
+            $transaction_cost = 33;
+        }elseif($amount > 2500 && $amount <= 3500){
+            $transaction_cost = 53;
+        }elseif($amount > 3500 && $amount <= 5000){
+            $transaction_cost = 57;
+        }elseif($amount > 5000 && $amount <= 7500){
+            $transaction_cost = 78;
+        }elseif($amount > 7500 && $amount <= 10000){
+            $transaction_cost = 90;
+        }elseif($amount > 10000 && $amount <= 15000){
+            $transaction_cost = 100;
+        }elseif($amount > 15000 && $amount <= 20000){
+            $transaction_cost = 105;
+        }elseif($amount > 20000 && $amount <= 35000){
+            $transaction_cost = 108;
+        }elseif($amount > 35000 && $amount <= 50000){
+            $transaction_cost = 108;
+        }elseif($amount > 50000 && $amount <= 250000){
+            $transaction_cost = 108;
+        }else{
+            $transaction_cost = 0;
+        }
+
+        return $transaction_cost;
+    }
 }
