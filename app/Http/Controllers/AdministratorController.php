@@ -239,9 +239,7 @@ class AdministratorController extends Controller
             return response()->json(["success" => false, "message" => "Update has failed, try again later!"]);
         }
     }
-
     function getMemberHistory($member_id){
-        
         // get the member data
         $member = Member::find($member_id);
         
@@ -251,18 +249,35 @@ class AdministratorController extends Controller
             $collection_history = DB::select("SELECT * FROM `milk_collections` WHERE `member_id` = ? AND `collection_date` ORDER BY `collection_id` DESC", [$member->user_id]);
             $count = DB::select("SELECT SUM(collection_amount) AS 'total' FROM `milk_collections` WHERE `member_id` = ?", [$member->user_id]);
             
+            // collection price
             // collection history iteration
             foreach ($collection_history as $key => $value) {
                 $collection_history[$key]->date = date("D dS M Y", strtotime($value->collection_date));
                 $collection_history[$key]->time = date("h:iA", strtotime($value->collection_date));
             }
+            $total_price = $this->getTotalPrice($collection_history);
 
             // collection history
-            return response()->json(["success" => true, "count" => number_format(count($count) > 0 ? ($count[0]->total ?? 0) : 0), "collection_history" => $collection_history]);
+            return response()->json(["success" => true, "total_price" => number_format($total_price, 2), "count" => number_format((count($count) > 0 ? ($count[0]->total ?? 0) : 0), 2), "collection_history" => $collection_history]);
         }else{
             // collection history
             return response()->json(["success" => false, "message" => "An error has occured!"]);
         }
+    }
+
+    function getTotalPrice($data){
+        $total_price = 0;
+        foreach ($data as $key => $value) {
+            $collection_date = date("Ymd", strtotime($value->collection_date))."000000";
+            $collection_amount = $value->collection_amount;
+
+            // get the milk price
+            $select = DB::select("SELECT * FROM `milk_prices` WHERE `effect_date` < '".$collection_date."' AND `status` = '1' ORDER BY `price_id` DESC LIMIT 1");
+            $total_price += (count($select) > 0 ? $select[0]->amount : 0) * $collection_amount;
+        }
+
+        // return price
+        return $total_price;
     }
 
     function addNewMember(Request $request){
@@ -466,5 +481,12 @@ class AdministratorController extends Controller
         }else{
             return response()->json(['success' => false, "message" => "Invalid milk details, Maybe it`s deleted!"]);
         }
+    }
+
+    // milk price
+    function milkPrice(){
+        $milk_price = DB::select("SELECT * FROM `milk_prices` WHERE `status` = '1' ORDER BY `price_id` DESC LIMIT 1");
+        $price = count($milk_price) > 0 ? $milk_price[0]->amount : 0;
+        return response()->json(["success" => true, "price" => $price]);
     }
 }

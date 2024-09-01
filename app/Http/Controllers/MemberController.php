@@ -376,8 +376,10 @@ class MemberController extends Controller
                 $collection_history[$key]->time = date("h:iA", strtotime($value->collection_date));
             }
 
+            $total_amount = $this->getTotalPrice($collection_history);
+
             // collection history
-            return response()->json(["success" => true, "count" => number_format(count($count) > 0 ? ($count[0]->total ?? 0) : 0), "collection_history" => $collection_history]);
+            return response()->json(["success" => true, "total_amount" => number_format($total_amount, 2), "count" => number_format((count($count) > 0 ? ($count[0]->total ?? 0) : 0), 2), "collection_history" => $collection_history]);
         }else{
             // collection history
             return response()->json(["success" => false, "message" => "An error has occured!"]);
@@ -389,10 +391,28 @@ class MemberController extends Controller
         if (count($milk_details) > 0) {
             $milk_details[0]->date = date("D, dS M Y", strtotime($milk_details[0]->collection_date));
             $milk_details[0]->time = date("h:iA", strtotime($milk_details[0]->collection_date));
+            $total_price = $this->getTotalPrice($milk_details);
+            $milk_details[0]->price = number_format($total_price, 2);
+            $milk_details[0]->ppl = number_format($total_price/$milk_details[0]->collection_amount, 2);
             return response()->json(["success" => true, "milk_details" => $milk_details[0]]);
         }else{
             return response()->json(["success" => false, "message" => "Collection details not found, It could be deleted!"]);
         }
+    }
+
+    function getTotalPrice($data){
+        $total_price = 0;
+        foreach ($data as $key => $value) {
+            $collection_date = date("Ymd", strtotime($value->collection_date))."000000";
+            $collection_amount = $value->collection_amount;
+
+            // get the milk price
+            $select = DB::select("SELECT * FROM `milk_prices` WHERE `effect_date` < '".$collection_date."' AND `status` = '1' ORDER BY `price_id` DESC LIMIT 1");
+            $total_price += (count($select) > 0 ? $select[0]->amount : 0) * $collection_amount;
+        }
+
+        // return price
+        return $total_price;
     }
 
     function changeMilkStatus(Request $request, $milk_id){
@@ -464,6 +484,23 @@ class MemberController extends Controller
         }else{
             // return value
             return response()->json(["success" => false, "message" => "Invalid token, Login and try again!"]);
+        }
+    }
+
+    // delete member
+    function deleteMember($member_id){
+        $member = DB::select("SELECT * FROM `members` WHERE `user_id` = ?", [$member_id]);
+        if (count($member) > 0) {
+            // delete the member
+            $member_id = DB::delete("DELETE FROM `members` WHERE `user_id` = ?", [$member_id]);
+            
+            // delete the collection
+            $delete_collection = DB::delete("DELETE FROM `milk_collections` WHERE `member_id` = ?", [$member_id]);
+
+            // return response
+            return response()->json(["success" => true, "message" => ucwords(strtolower($member[0]->fullname))." has been deleted successfully!"]);
+        }else{
+            return response()->json(["success" => false, "message" => "Member not found, maybe they have been deleted!"]);
         }
     }
 }

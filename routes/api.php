@@ -66,3 +66,6 @@ Route::post("admin/member/milk_prices", [AdministratorController::class, "getMil
 Route::post("admin/milk_price/insert", [AdministratorController::class, "insertDate"])->middleware("authenticate");
 Route::post("admin/milk_price/details/{price_id}", [AdministratorController::class, "getMilkDetails"])->middleware("authenticate");
 Route::post("admin/milk_price/update", [AdministratorController::class, "updateMilk"])->middleware("authenticate");
+Route::post("admin/milk_price/get", [AdministratorController::class, "milkPrice"])->middleware("authenticate");
+Route::post("admin/milk_collection/delete/{milk_id}", [CollectionController::class, "deleteCollection"])->middleware("authenticate");
+Route::post("admin/member/delete/{member_id}", [MemberController::class, "deleteMember"])->middleware("authenticate");

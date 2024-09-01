@@ -303,6 +303,21 @@ class CollectionController extends Controller
         return response()->json(["success" => true, "rejected" => $rejected, "confirmed" => $confirmed, "not_confirmed" => $not_confirmed, "collection_history" => $collection_history]);
     }
 
+    function getTotalPrice($data){
+        $total_price = 0;
+        foreach ($data as $key => $value) {
+            $collection_date = date("Ymd", strtotime($value->collection_date))."000000";
+            $collection_amount = $value->collection_amount;
+
+            // get the milk price
+            $select = DB::select("SELECT * FROM `milk_prices` WHERE `effect_date` < '".$collection_date."' AND `status` = '1' ORDER BY `price_id` DESC LIMIT 1");
+            $total_price += (count($select) > 0 ? $select[0]->amount : 0) * $collection_amount;
+        }
+
+        // return price
+        return $total_price;
+    }
+
     function collectionDetail($collection_id){
         $collection = DB::select("SELECT MC.*, M.fullname, M.membership, M.phone_number, M.user_id FROM `milk_collections` AS MC LEFT JOIN members AS M ON MC.member_id = M.user_id WHERE MC.collection_id = ?", [$collection_id]);
         
@@ -310,6 +325,8 @@ class CollectionController extends Controller
             $collection[0]->date = date("D dS M Y", strtotime($collection[0]->collection_date));
             $collection[0]->time = date("H:i A", strtotime($collection[0]->collection_date));
 
+            $total_price = $this->getTotalPrice($collection);
+            $collection[0]->price = number_format($total_price, 2);
             // get the edit history
             $member_id = $collection[0]->member_id;
             $collect_id = $collection[0]->collection_id;
@@ -400,5 +417,16 @@ class CollectionController extends Controller
         }
         // RETURN VALUE
         return response()->json(["success" => true, "collection_history" => $collection_history]);
+    }
+
+    function deleteCollection($collection_id){
+        $collection = DB::select("SELECT * FROM `milk_collections` WHERE `collection_id` = ?", [$collection_id]);
+        if(count($collection)){
+            $delete = DB::delete("DELETE FROM `milk_collections` WHERE `collection_id` = ?", [$collection_id]);
+            $delete_log = DB::delete("DELETE FROM `collection_change_logs` WHERE `collection_id` = ?", [$collection_id]);
+            return response()->json(["success" => true, "message" => "Collection has been deleted successfully!"]);
+        }else{
+            return response()->json(["success" => false, "message" => "Collection not found, It could be deleted!"]);
+        }
     }
 }
