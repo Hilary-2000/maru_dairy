@@ -280,6 +280,18 @@ class AdministratorController extends Controller
         return $total_price;
     }
 
+    function getTotalLitres($data){
+        $litres_collected = 0;
+        foreach ($data as $key => $value) {
+            // collection price
+            $collection_amount = $value->collection_amount;
+            $litres_collected += $collection_amount;
+        }
+
+        // return price
+        return $litres_collected;
+    }
+
     function addNewMember(Request $request){
         // phone number
         $phone_number = $request->input("phone_number");

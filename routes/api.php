@@ -70,3 +70,6 @@ Route::post("admin/milk_price/get", [AdministratorController::class, "milkPrice"
 Route::post("admin/milk_collection/delete/{milk_id}", [CollectionController::class, "deleteCollection"])->middleware("authenticate");
 Route::post("admin/member/delete/{member_id}", [MemberController::class, "deleteMember"])->middleware("authenticate");
 Route::post("admin/member/membership/{member_id}", [MemberController::class, "memberMembership"])->middleware("authenticate");
+Route::post("admin/member/accept-earning", [MemberController::class, "acceptMemberPayment"])->middleware("authenticate");
+Route::post("admin/member/deletePayment/{payment_id}", [MemberController::class, "declinePayment"])->middleware("authenticate");
+Route::post("admin/member/pay_subscription", [MemberController::class, "paySubscription"])->middleware("authenticate");

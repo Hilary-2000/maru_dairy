@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\collectionLogs;
 use App\Models\Credential;
+use App\Models\Deduction;
 use App\Models\Member;
 use App\Models\Milk_collection;
+use App\Models\Payment;
+use DateTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 date_default_timezone_set('Africa/Nairobi');
@@ -519,14 +522,16 @@ class MemberController extends Controller
             // last months collections
             $start = $last_month."01000000";
             $end = $last_month."31000000";
-            $last_month_collection = DB::select("SELECT * FROM `milk_collections` WHERE `collection_date` BETWEEN ? AND ?", [$start, $end]);
+            $last_month_collection = DB::select("SELECT * FROM `milk_collections` WHERE `member_id` = ? AND `collection_date` BETWEEN ? AND ?", [$member_id, $start, $end]);
             $last_month_pay = $admin->getTotalPrice($last_month_collection);
+            $last_month_litres = $admin->getTotalLitres($last_month_collection);
 
             // current months collections
             $start = $current_month."01000000";
             $end = $current_month."31000000";
-            $current_month_collection = DB::select("SELECT * FROM `milk_collections` WHERE `collection_date` BETWEEN ? AND ?", [$start, $end]);
+            $current_month_collection = DB::select("SELECT * FROM `milk_collections` WHERE `member_id` = ? AND `collection_date` BETWEEN ? AND ?", [$member_id, $start, $end]);
             $current_month_pay = $admin->getTotalPrice($current_month_collection);
+            $current_month_litres = $admin->getTotalLitres($current_month_collection);
             
             // joining fees
             $joining_fees = $this->getJoiningFees($member_details->date_registered);
@@ -547,27 +552,59 @@ class MemberController extends Controller
             // payments
             $monthly_payments = DB::select("SELECT * FROM `payments` WHERE `member_id` = ? ORDER BY `payment_id` DESC", [$member_id]);
             
-            // monthly payment
-            foreach ($monthly_payments as $key => $value) {
-                $monthly_payments[$key]->payment_amount = number_format($value->payment_amount, 2);
-                $monthly_payments[$key]->clear_date = date("dS M Y", strtotime($value->date_paid));
-                $monthly_payments[$key]->clear_month = date("dS M Y", strtotime($value->month_paid_for));
-                $monthly_payments[$key]->transaction_cost = $this->mpesa_transaction_cost($value->payment_amount);
-                $monthly_payments[$key]->payment_amount = number_format($value->payment_amount, 2);
+            $date_joined = date("Ym");
+            $counter = 100;
+            $earnings = [];
+            while(true){
+                $date_joined = strlen($date_joined) > 6 ? date("Ym", strtotime($date_joined."-01")) : $date_joined;
+                $start = $date_joined."01000000";
+                $end = $this->addMonths($date_joined."01", 1)."000000";
+                
+                // collection
+                $collection = DB::select("SELECT * FROM `milk_collections` WHERE `member_id` = ? AND `collection_date` BETWEEN ? AND ?", [$member_details->user_id, $start, $end]);
+                $collection_amount = $admin->getTotalPrice($collection);
+                $litres_collected = $admin->getTotalLitres($collection);
+
+                $confirmed = false;
+                $payment_id = null;
+                $payment_amount = 0;
+                foreach ($monthly_payments as $key => $value) {
+                    if ($value->month_paid_for == date("M-Y", strtotime($start))) {
+                        $confirmed = true;
+                        $payment_id = $value->payment_id;
+                        $payment_amount = $value->payment_amount;
+                    }
+                }
+
+                // earning data
+                $earn = array("id" => $payment_id, "confirmed" => $confirmed, "month_paid_for" => date("M-Y", strtotime($start)), "raw_start_date" => $start, "litres_collected" => $litres_collected, "raw_end_date" => $end, "raw_amount" => $confirmed ? $payment_amount : $collection_amount, "payment_amount" => $confirmed ? number_format($payment_amount, 2) : number_format($collection_amount, 2), "start" => date("dS M Y", strtotime($start)), "end" => date("dS M Y", strtotime($this-> addDate("$end-01", '-1 days'))), "publish_date" => date("dS M Y", strtotime($end)), "transaction_cost" => $this->mpesa_transaction_cost($collection_amount));
+                array_push($earnings, $earn);
+
+                // check what was earned every month
+                if(date("Y-m", strtotime($start)) == date("Y-m", strtotime($member_details->date_registered)) || $counter == 0){
+                    break;
+                }
+
+                // date joined
+                $date_joined = date("Y-m", strtotime($this->addMonths($start."-01", -1)));
+                $counter--;
             }
+
             return response()->json(
                 [
                     "success" => true,
+                    "last_month_litres" => $last_month_litres,
+                    "current_month_litres" => $current_month_litres, 
                     "member_details" => $member_details,
-                    "last_month" => date("Y-M" ,strtotime($last_month."01")),
-                    "curr_month" => date("Y-M" ,strtotime($current_month."01")),
+                    "last_month" => date("M-Y" ,strtotime($last_month."01")),
+                    "curr_month" => date("M-Y" ,strtotime($current_month."01")),
                     "last_month_pay" => number_format($last_month_pay, 2),
                     "current_month_pay" => number_format($current_month_pay, 2),
                     "joining_fees_balance" => number_format($joining_fees_balance, 2),
                     "membership_amount_balance" => number_format($membership_amount_balance, 2),
                     "annual_subscription_balance" => number_format($annual_subscription_balance, 2),
                     "annual_sub_n_payment" => $annual_sub_n_payment,
-                    "monthly_payments" => $monthly_payments
+                    "monthly_payments" => $earnings
                 ]
             );
         }else{
@@ -590,6 +627,30 @@ class MemberController extends Controller
         }
     }
 
+    function addDate($date, $interval) {
+        $dateTime = new DateTime($date);
+        $dateTime->modify($interval);
+        return $dateTime->format('Ymd');
+    }
+
+    function addMonths($date, $months) {
+        $dateTime = new DateTime($date);
+    
+        // Store the original day
+        $originalDay = $dateTime->format('d');
+    
+        // Modify the date by adding months
+        $dateTime->modify("+{$months} months");
+    
+        // Check if the day has changed (overflow occurred)
+        if ($dateTime->format('d') !== $originalDay) {
+            // Go back to the last day of the previous month
+            $dateTime->modify('last day of previous month');
+        }
+    
+        return $dateTime->format('Ymd');
+    }
+    
     function annual_subscription_balance($member_id){
         $member = Member::find($member_id);
         if ($member) {
@@ -600,7 +661,7 @@ class MemberController extends Controller
             $annual_subscription = ($current_year - $date_joined) * 1000;
 
             // amount paid on behalf of the subscription fees
-            $annual_subscription_paid = DB::select("SELECT SUM(`deduction_amount`) AS 'total' FROM `deductions` WHERE `deduction_type` = 'membership_fees' AND `member_id` = '".$member_id."'");
+            $annual_subscription_paid = DB::select("SELECT SUM(`deduction_amount`) AS 'total' FROM `deductions` WHERE `deduction_type` = 'subscription' AND `member_id` = '".$member_id."'");
 
             // balance
             $annual_subscription_balance = $annual_subscription - ($annual_subscription_paid[0]->total ?? 0);
@@ -617,32 +678,63 @@ class MemberController extends Controller
             $current_year = date("Y");
             $year_joined = date("Y",strtotime($member->date_registered));
 
-            // loop through the year
-            $subscriptions = [];
-            for ($year = $current_year; $year >= $year_joined; $year--) {
-                $data = [];
-                // period
-                $start = $year."0101000000";
-                $end = $year."1231235959";
+            // current_year
+            if ($current_year == $year_joined) {
+                // loop through the year
+                $subscriptions = [];
+                for ($year = $current_year; $year >= $year_joined; $year--) {
+                    $data = [];
+                    // period
+                    $start = $year."0101000000";
+                    $end = $year."1231235959";
+    
+                    // subscription payments
+                    $deduction = DB::select("SELECT * FROM `deductions` WHERE `deduction_date` BETWEEN ? AND ?", [$start, $end]);
+    
+                    // new annual payment
+                    $annual_subscription = array("id" => "-1", "deduction_type" => "increase", "deduction_amount" => "1000", "balance" => "1000", "member_id" => $member_id, "deduction_date" => $year."0101000000", "clear_date" => date("dS M Y", strtotime($year."0101000000")));
+                    array_push($data, $annual_subscription);
+    
+                    // modify the deduction balance
+                    foreach ($deduction as $key => $value) {
+                        $deduction[$key]->balance = ($annual_subscription['deduction_amount']*1) - $value->deduction_amount;
+                        $deduction[$key]->clear_date = date("dS M Y", strtotime($deduction[$key]->deduction_date));
+                    }
+    
+                    // merge annual payment and its deductions
+                    $new_data = array_merge($deduction,$data);
+                    
+                    // push_data
+                    $push_data = array("year" => $year, "subscription" => $new_data);
+                    array_push($subscriptions,$push_data);
+                }
 
-                // subscription payments
-                $deduction = DB::select("SELECT * FROM `deductions` WHERE `deduction_date` BETWEEN ? AND ?", [$start, $end]);
-
-                // new annual payment
-                $annual_subscription = array("id" => "-1", "deduction_type" => "increase", "deduction_amount" => "1000", "balance" => "1000", "member_id" => $member_id, "deduction_date" => $year."0101000000", "clear_date" => date("dS M Y", strtotime($year."0101000000")));
-                array_push($data, $annual_subscription);
-
-                // merge annual payment and its deductions
-                $new_data = array_merge($data,$deduction);
-                
-                $push_data = array("year" => $year, "subscription" => $new_data);
-                array_push($subscriptions,$push_data);
+                // return subscriptions
+                return $subscriptions;
+            }else{
+                return [];
             }
-
-            return $subscriptions;
         }else{
             return [];
         }
+    }
+
+    function paySubscription(Request $request){
+        // balance
+        $balance = $this->annual_subscription_balance($request->input("member_id"));
+        $balance -= $request->input("deduction_amount")*1;
+
+        // subscription
+        $pay_subscription = new Deduction();
+        $pay_subscription->deduction_type = $request->input("deduction_type");
+        $pay_subscription->deduction_amount = $request->input("deduction_amount");
+        $pay_subscription->balance = $balance;
+        $pay_subscription->member_id = $request->input("member_id");
+        $pay_subscription->deduction_date = date("YmdHis");
+        $pay_subscription->save();
+        
+        // response
+        return response()->json(["success" => true, "message" => "Payment has been made successfully!"]);
     }
 
     function mpesa_transaction_cost($amount){
@@ -678,5 +770,55 @@ class MemberController extends Controller
         }
 
         return $transaction_cost;
+    }
+
+    function acceptMemberPayment(Request $request){
+        // add deduction if there is any
+
+        // subscription
+        $deduction_amount = $request->input("deduction_amount");
+        $payment_amount = $request->input("payment_amount");
+        $subscription_id = "-1";
+        if($deduction_amount > 0){
+            $payment_amount -= $deduction_amount;
+            $pay_subscription = new Deduction();
+            $pay_subscription->deduction_type = $request->input("deduction_type");
+            $pay_subscription->deduction_amount = $deduction_amount;
+            $pay_subscription->balance = 0;
+            $pay_subscription->member_id = $request->input("member_id");
+            $pay_subscription->deduction_date = date("YmdHis");
+            $pay_subscription->save();
+
+            // set subscription id
+            $subscription_id = $pay_subscription->id;
+        }
+        
+
+        // payment amounts
+        $payment = new Payment();
+        $payment->payment_amount = $payment_amount;
+        $payment->transaction_cost = $request->input("transaction_cost");
+        $payment->date_paid = date("YmdHis");
+        $payment->member_id = $request->input("member_id");
+        $payment->month_paid_for = $request->input("month_paid_for");
+        $payment->litres_amount = $request->input("litres_amount");
+        $payment->deduction_id = $subscription_id;
+        $payment->save();
+
+        return response()->json(["success" => true, "message" => "Payment confirmed successfully!"]);
+    }
+
+    function declinePayment($payment_id){
+        $find_payment = DB::select("SELECT * FROM `payments` WHERE `payment_id` = '".$payment_id."'");
+        if (count($find_payment) > 0) {
+            // delete deduction
+            $delete = DB::select("DELETE FROM `deductions` WHERE `id` = '".$find_payment[0]->deduction_id."'");
+
+            // delete payment
+            $delete = DB::delete("DELETE FROM `payments` WHERE `payment_id` = '".$payment_id."'");
+            return response()->json(["success" => true, "message" => "Payment deleted successfully!"]);
+        }else{
+            return response()->json(["success" => false, "message" => "An error has occured!"]);
+        }
     }
 }
