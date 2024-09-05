@@ -435,11 +435,16 @@ class MemberController extends Controller
         // authenticated
         if ($authenticated) {
             $member_details = Member::find($authenticated->user_id);
-            $collection_days = DB::select("SELECT COUNT(*) AS 'total' FROM `milk_collections` WHERE `member_id` = ?",[$member_details->user_id]);
-            $total_collection = DB::select("SELECT SUM(`collection_amount`) AS 'total' FROM `milk_collections` WHERE `member_id` = ?", [$member_details->user_id]);
-            
-            // return value
-            return response()->json(["success" => true, "collection_days" => number_format(count($collection_days) > 0 ? $collection_days[0]->total ?? 0 : 0), "total_collection" => number_format(count($total_collection) > 0 ? $total_collection[0]->total ?? 0 : 0), "member_details" => $member_details]);
+            if ($member_details) {
+                $collection_days = DB::select("SELECT COUNT(*) AS 'total' FROM `milk_collections` WHERE `member_id` = ?",[$member_details->user_id]);
+                $total_collection = DB::select("SELECT SUM(`collection_amount`) AS 'total' FROM `milk_collections` WHERE `member_id` = ?", [$member_details->user_id]);
+                
+                // return value
+                return response()->json(["success" => true, "collection_days" => number_format(count($collection_days) > 0 ? $collection_days[0]->total ?? 0 : 0), "total_collection" => number_format(count($total_collection) > 0 ? $total_collection[0]->total ?? 0 : 0), "member_details" => $member_details]);
+            }else{
+                // return value
+                return response()->json(["success" => false, "message" => "Invalid member!"]);
+            }
         }else{
             // return value
             return response()->json(["success" => false, "message" => "Invalid token, Login and try again!"]);
@@ -679,7 +684,7 @@ class MemberController extends Controller
             $year_joined = date("Y",strtotime($member->date_registered));
 
             // current_year
-            if ($current_year == $year_joined) {
+            if ($current_year != $year_joined) {
                 // loop through the year
                 $subscriptions = [];
                 for ($year = $current_year; $year >= $year_joined; $year--) {
@@ -689,7 +694,7 @@ class MemberController extends Controller
                     $end = $year."1231235959";
     
                     // subscription payments
-                    $deduction = DB::select("SELECT * FROM `deductions` WHERE `deduction_date` BETWEEN ? AND ?", [$start, $end]);
+                    $deduction = DB::select("SELECT * FROM `deductions` WHERE `deduction_type` = 'membership_fees',  `member_id` = ? AND `deduction_date` BETWEEN ? AND ? ORDER BY `id` DESC", [$member_id, $start, $end]);
     
                     // new annual payment
                     $annual_subscription = array("id" => "-1", "deduction_type" => "increase", "deduction_amount" => "1000", "balance" => "1000", "member_id" => $member_id, "deduction_date" => $year."0101000000", "clear_date" => date("dS M Y", strtotime($year."0101000000")));
@@ -776,34 +781,32 @@ class MemberController extends Controller
         // add deduction if there is any
 
         // subscription
-        $deduction_amount = $request->input("deduction_amount");
-        $payment_amount = $request->input("payment_amount");
-        $subscription_id = "-1";
-        if($deduction_amount > 0){
-            $payment_amount -= $deduction_amount;
-            $pay_subscription = new Deduction();
-            $pay_subscription->deduction_type = $request->input("deduction_type");
-            $pay_subscription->deduction_amount = $deduction_amount;
-            $pay_subscription->balance = 0;
-            $pay_subscription->member_id = $request->input("member_id");
-            $pay_subscription->deduction_date = date("YmdHis");
-            $pay_subscription->save();
-
-            // set subscription id
-            $subscription_id = $pay_subscription->id;
-        }
+        $deductions = $request->input("deductions");
         
 
         // payment amounts
         $payment = new Payment();
-        $payment->payment_amount = $payment_amount;
+        $payment->payment_amount = $request->input("payment_amount");
         $payment->transaction_cost = $request->input("transaction_cost");
         $payment->date_paid = date("YmdHis");
         $payment->member_id = $request->input("member_id");
         $payment->month_paid_for = $request->input("month_paid_for");
         $payment->litres_amount = $request->input("litres_amount");
-        $payment->deduction_id = $subscription_id;
         $payment->save();
+
+        $payment_id = $payment->payment_id;
+        if(count($deductions) > 0){
+            foreach ($deductions as $key => $deduction) {
+                $pay_subscription = new Deduction();
+                $pay_subscription->deduction_type = $deduction['deduction_type'];
+                $pay_subscription->deduction_amount = $deduction['deduction_amount'];
+                $pay_subscription->balance = 0;
+                $pay_subscription->payment_id = $payment_id;
+                $pay_subscription->member_id = $request->input("member_id");
+                $pay_subscription->deduction_date = date("YmdHis");
+                $pay_subscription->save();
+            }
+        }
 
         return response()->json(["success" => true, "message" => "Payment confirmed successfully!"]);
     }
@@ -812,7 +815,7 @@ class MemberController extends Controller
         $find_payment = DB::select("SELECT * FROM `payments` WHERE `payment_id` = '".$payment_id."'");
         if (count($find_payment) > 0) {
             // delete deduction
-            $delete = DB::select("DELETE FROM `deductions` WHERE `id` = '".$find_payment[0]->deduction_id."'");
+            $delete = DB::select("DELETE FROM `deductions` WHERE `payment_id` = '".$payment_id."'");
 
             // delete payment
             $delete = DB::delete("DELETE FROM `payments` WHERE `payment_id` = '".$payment_id."'");
@@ -821,4 +824,5 @@ class MemberController extends Controller
             return response()->json(["success" => false, "message" => "An error has occured!"]);
         }
     }
+    
 }

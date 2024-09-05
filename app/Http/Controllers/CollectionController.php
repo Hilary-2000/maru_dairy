@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Collection;
 use App\Models\collectionLogs;
+use App\Models\Credential;
 use App\Models\Member;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -267,7 +268,14 @@ class CollectionController extends Controller
     }
 
     // get the collection history of 7 days
-    function getCollectionHistory($period){
+    function getCollectionHistory(Request $request, $period){
+        // $authentication_code = $request->header("maru-authentication_code");
+        // $technician_id = 0;
+        // $collection = DB::select("SELECT * FROM `credentials` WHERE `authentication_code` = '".$authentication_code."'");
+        // if ($collection) {
+        //     $technician_id = $collection[0]->user_id;
+        // }
+
         $start = date("Ymd", strtotime("-7 days"))."000000";
         $end = date("Ymd")."235959";
         if ($period == "14 days") {

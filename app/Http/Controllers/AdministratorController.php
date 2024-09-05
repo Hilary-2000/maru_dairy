@@ -6,6 +6,7 @@ use App\Models\Administrator;
 use App\Models\Credential;
 use App\Models\Member;
 use App\Models\MilkPrice;
+use App\Models\SuperAdministrator;
 use DateTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -162,7 +163,7 @@ class AdministratorController extends Controller
         // get the admin data
         $authentication_code = $request->header("maru-authentication_code");
         $credential = Credential::where("authentication_code", $authentication_code)->first();
-        $member_data = Administrator::find($credential->user_id);
+        $member_data = $credential->user_type == "2" ? Administrator::find($credential->user_id) : SuperAdministrator::find($credential->user_id);
 
         // milk_collection
         return response()->json(["success" => true, "report_period" => $report_period, "member_data" => $member_data, "time_of_day" => $time_of_day, "collection_status" => $milk_collection_status, "collection_percentage" => $milk_precentage, "total_collection" => $milk_collection[0]->total ?? 0, "collection_graph_data" => $collection_graph_data, "members_present" => $members_present[0]->total ?? 0, "member_present_graph" => $member_present_graph_data, "members_registered" => $member_registered[0]->total ?? 0,  "member_status" => $member_status, "member_percentage" => $member_percentage, "member_registered_graph" => $member_registered_graph_data]);
@@ -351,7 +352,7 @@ class AdministratorController extends Controller
         $credential = Credential::where("authentication_code", $authentication_code)->first();
         if($credential){
             // find user
-            $administrator = Administrator::find($credential->user_id);
+            $administrator = $credential->user_type == "2" ? Administrator::find($credential->user_id) : SuperAdministrator::find($credential->user_id);
             if ($administrator) {
                 return response()->json(["success" => true, "administrator" => $administrator]);
             }else{
@@ -364,20 +365,32 @@ class AdministratorController extends Controller
 
     // update profile
     function updateProfile(Request $request){
+
         // authentication_code
         $authentication_code = $request->header("maru-authentication_code");
+
         // credential
         $credential = Credential::where("authentication_code", $authentication_code)->first();
         if($credential){
             // find user
-            $administrator = Administrator::find($credential->user_id);
+            $username = DB::select("SELECT * FROM `credentials` WHERE `username` = '".$request->input("username")."' AND `user_id` = '".$credential->user_id."'");
+            if(count($username) > 0){
+                return response()->json(["success" => false, "message" => "Username is already taken!"]);
+            }
+
+            // administrator
+            $administrator = $credential->user_type == "2" ? Administrator::find($credential->user_id) : SuperAdministrator::find($credential->user_id);
             if ($administrator) {
                 $administrator->fullname = $request->input("fullname");
                 $administrator->phone_number = $request->input("phone_number");
                 $administrator->email = $request->input("email");
                 $administrator->residence = $request->input("residence");
                 $administrator->region = $request->input("region");
+                $administrator->username = $request->input("username");
                 $administrator->save();
+
+                $credential->username = $request->input("username");
+                $credential->save();
 
                 // return response
                 return response()->json(["success" => true, "message" => "Update has been done successfully!"]);
@@ -500,5 +513,107 @@ class AdministratorController extends Controller
         $milk_price = DB::select("SELECT * FROM `milk_prices` WHERE `status` = '1' ORDER BY `price_id` DESC LIMIT 1");
         $price = count($milk_price) > 0 ? $milk_price[0]->amount : 0;
         return response()->json(["success" => true, "price" => $price]);
+    }
+
+    function displayAdministrators(){
+        $administrators = DB::select("SELECT * FROM `administrators` ORDER BY `user_id` DESC");
+        return response()->json(["success" => true, "administrators" => $administrators]);
+    }
+
+    function adminDetails($administrator_id){
+        $administrator = DB::select("SELECT * FROM `administrators` WHERE `user_id` = ? ORDER BY `user_id` DESC", [$administrator_id]);
+        if (count($administrator)) {
+            // return response
+            return response()->json(["success" => true, "administrator" => $administrator[0]]);
+        }else{
+            return response()->json(["success" => false, "message" => "Invalid administrator!"]);
+        }
+    }
+
+    function deleteAdmin($administrator_id){
+        $administrator = DB::select("SELECT * FROM `administrators` WHERE `user_id` = ? ORDER BY `user_id` DESC", [$administrator_id]);
+        if (count($administrator)) {
+            // return response
+            $delete = DB::delete("DELETE FROM `administrators` WHERE `user_id` = ? ", [$administrator_id]);
+            return response()->json(["success" => true, "message" => "Administrator has been deleted successfully!"]);
+        }else{
+            return response()->json(["success" => false, "message" => "Invalid administrator!"]);
+        }
+    }
+
+    function updateAdministrator(Request $request){
+        // check phone number and id
+        $check_phone = DB::select("SELECT * FROM `administrators` WHERE `phone_number` = ? AND `user_id` != ?", [$request->input("phone_number"), $request->input("user_id")]);
+        if (count($check_phone) > 0) {
+            return response()->json(["success" => false, "message" => "Phone number has been used!"]);
+        }
+
+        // check id
+        $check_id = DB::select("SELECT * FROM `administrators` WHERE `national_id` = ? AND `user_id` != ?", [$request->input("national_id"), $request->input("user_id")]);
+        if (count($check_id) > 0) {
+            return response()->json(["success" => false, "message" => "National id number has been used!"]);
+        }
+
+        // update technician
+        $technician = Administrator::find($request->input("user_id"));
+        if ($technician) {
+            $technician->fullname = $request->input("fullname");
+            $technician->phone_number = $request->input("phone_number");
+            $technician->email = $request->input("email");
+            $technician->residence = $request->input("residence");
+            $technician->region = $request->input("region");
+            $technician->national_id = $request->input("national_id");
+            $technician->gender = $request->input("gender");
+            $technician->status = $request->input("status");
+            $technician->save();
+
+            return response()->json(["success" => true, "message" => "Administrator has been updated successfully!"]);
+        }else{
+            return response()->json(["success" => false, "message" => "Invalid administrator!"]);
+        }
+    }
+
+    function registerAdministrator(Request $request){
+        // check phone number and id
+        $check_phone = DB::select("SELECT * FROM `administrators` WHERE `phone_number` = ? AND `user_id` != ?", [$request->input("phone_number"), $request->input("user_id")]);
+        if (count($check_phone) > 0) {
+            return response()->json(["success" => false, "message" => "Phone number has been used!"]);
+        }
+
+        // check id
+        $check_id = DB::select("SELECT * FROM `administrators` WHERE `national_id` = ? AND `user_id` != ?", [$request->input("national_id"), $request->input("user_id")]);
+        if (count($check_id) > 0) {
+            return response()->json(["success" => false, "message" => "National id number has been used!"]);
+        }
+
+        // check username in credentials
+        $check_username = DB::select("SELECT * FROM `credentials` WHERE `username` = ?", [$request->input("username")]);
+        if (count($check_username) > 0) {
+            return response()->json(["success" => false, "message" => "Username has been taken!"]);
+        }
+
+        $administrator = new Administrator();
+        $administrator->fullname = $request->input("fullname");
+        $administrator->phone_number = $request->input("phone_number");
+        $administrator->email = $request->input("email");
+        $administrator->residence = $request->input("residence");
+        $administrator->region = $request->input("region");
+        $administrator->national_id = $request->input("national_id");
+        $administrator->gender = $request->input("gender");
+        $administrator->status = $request->input("status");
+        $administrator->username = $request->input("username");
+        $administrator->password = $request->input("password");
+        $administrator->profile_photo = "";
+        $administrator->save();
+        
+        // register their credentials
+        $credential = new Credential();
+        $credential->user_id = $administrator->user_id;
+        $credential->username = $request->input("username");
+        $credential->password = $request->input("password");
+        $credential->user_type = "2";
+        $credential->save();
+
+        return response()->json(["success" => true, "message" => "Administrator has been added successfully!"]);
     }
 }

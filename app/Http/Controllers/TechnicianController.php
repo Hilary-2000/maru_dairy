@@ -158,4 +158,130 @@ class TechnicianController extends Controller
             return response()->json(["success" => false, "message" => "Invalid credential provided!"]);
         }
     }
+
+    // get technicians
+    function getTechnicians(){
+        // technicians
+        $technicians = DB::select("SELECT * FROM `technicians` ORDER BY `user_id` DESC");
+
+        if (count($technicians)) {
+            return response()->json(["success" => true, "technicians" => $technicians]);
+        }else {
+            return response()->json(["success" => false, "message" => "No technicians found!"]);
+        }
+    }
+
+    function technicianDetails($technician_id){
+        // technician data
+        $technician_data = DB::select("SELECT * FROM `technicians` WHERE `user_id` = ?", [$technician_id]);
+        
+        if (count($technician_data) > 0) {
+            // get the collection stats
+            $collection_days = DB::select("SELECT COUNT(*) AS 'days_collected' FROM `milk_collections` WHERE `technician_id` = '".$technician_id."' AND `user_type` = '1'");
+            $collection_amount = DB::select("SELECT `collection_amount` FROM `milk_collections` WHERE `technician_id` = '".$technician_id."' AND `user_type` = '1'");
+            
+
+            // total amount
+            $total = 0;
+            foreach($collection_amount as $collect){
+                $total += $collect->collection_amount*=1;
+            }
+            
+            // return the data
+            $technician_data[0]->collection_days = count($collection_days) > 0 ? $collection_days[0]->days_collected : 0;
+            $technician_data[0]->collection_amount = number_format($total, 2);
+            return response()->json(["success" => true, "total_collection" => $total, "technician_data" => $technician_data[0]]);
+        }else{
+            return response()->json(["success" => false, "message" => "Invalid Technician!"]);
+        }
+    }
+
+    function updateTechnician(Request $request){
+        // check phone number and id
+        $check_phone = DB::select("SELECT * FROM `technicians` WHERE `phone_number` = ? AND `user_id` != ?", [$request->input("phone_number"), $request->input("user_id")]);
+        if (count($check_phone) > 0) {
+            return response()->json(["success" => false, "message" => "Phone number has been used!"]);
+        }
+
+        // check id
+        $check_id = DB::select("SELECT * FROM `technicians` WHERE `national_id` = ? AND `user_id` != ?", [$request->input("national_id"), $request->input("user_id")]);
+        if (count($check_id) > 0) {
+            return response()->json(["success" => false, "message" => "National id number has been used!"]);
+        }
+        // update technician
+        $technician = Technician::find($request->input("user_id"));
+        if ($technician) {
+            $technician->fullname = $request->input("fullname");
+            $technician->phone_number = $request->input("phone_number");
+            $technician->email = $request->input("email");
+            $technician->residence = $request->input("residence");
+            $technician->region = $request->input("region");
+            $technician->national_id = $request->input("national_id");
+            $technician->gender = $request->input("gender");
+            $technician->status = $request->input("status");
+            $technician->save();
+
+            return response()->json(["success" => true, "message" => "Technician has been updated successfully!"]);
+        }else{
+            return response()->json(["success" => false, "message" => "Invalid technician!"]);
+        }
+    }
+
+    function deleteTechnician($technician_id){
+        $technician = Technician::find($technician_id);
+        if($technician){
+            $delete =DB::delete("DELETE FROM `technicians` WHERE `user_id` = '".$technician_id."'");
+            return response()->json(["success" => true, "message" => "Technician deleted successfully!"]);
+        }else{
+            return response()->json(["success" => false, "message" => "Invalid technician!"]);
+        }
+    }
+
+    // new technician
+    function registerTechnician(Request $request){
+        // check phone number and id
+        $check_phone = DB::select("SELECT * FROM `technicians` WHERE `phone_number` = ?", [$request->input("phone_number")]);
+        if (count($check_phone) > 0) {
+            return response()->json(["success" => false, "message" => "Phone number has been used!"]);
+        }
+
+        // check id
+        $check_id = DB::select("SELECT * FROM `technicians` WHERE `national_id` = ?", [$request->input("national_id")]);
+        if (count($check_id) > 0) {
+            return response()->json(["success" => false, "message" => "National id number has been used!"]);
+        }
+
+        // check username in credentials
+        $check_username = DB::select("SELECT * FROM `credentials` WHERE `username` = ?", [$request->input("username")]);
+        if (count($check_username) > 0) {
+            return response()->json(["success" => false, "message" => "Username has been taken!"]);
+        }
+
+
+        // save the technician
+        $technician = new Technician();
+        $technician->fullname = $request->input("fullname");
+        $technician->phone_number = $request->input("phone_number");
+        $technician->email = $request->input("email");
+        $technician->residence = $request->input("residence");
+        $technician->region = $request->input("region");
+        $technician->national_id = $request->input("national_id");
+        $technician->gender = $request->input("gender");
+        $technician->status = $request->input("status");
+        $technician->username = $request->input("username");
+        $technician->password = $request->input("password");
+        $technician->profile_photo = "";
+        $technician->save();
+        
+        // register their credentials
+        $credential = new Credential();
+        $credential->user_id = $technician->user_id;
+        $credential->username = $request->input("username");
+        $credential->password = $request->input("password");
+        $credential->user_type = "1";
+        $credential->save();
+        
+        // response
+        return response()->json(["success" => true, "message" => "Technician registered successfully!"]);
+    }
 }
