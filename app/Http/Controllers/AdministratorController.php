@@ -10,6 +10,7 @@ use App\Models\SuperAdministrator;
 use DateTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 
 class AdministratorController extends Controller
 {
@@ -615,5 +616,70 @@ class AdministratorController extends Controller
         $credential->save();
 
         return response()->json(["success" => true, "message" => "Administrator has been added successfully!"]);
+    }
+
+    function upload_dp(Request $req)
+    {
+        // authentication_code
+        $authentication_code = $req->header("maru-authentication_code");
+        
+        // credential
+        $credential = Credential::where("authentication_code", $authentication_code)->first();
+
+        if ($credential) {
+            $user_type = $credential->user_type;
+            // Validate the request
+            $req->validate([
+                'mine_dp' => 'required|image|mimes:jpeg,png,jpg,gif,svg',
+                'user_id' => 'required|integer'
+            ]);
+
+            // table_type
+            $table_type = $user_type == "2" ? "administrators" : "super_administrators";
+        
+            // Set variables
+            $user_id = $req->input('user_id');
+            $imageName = $user_id . "_" . date("YmdHis") . '.' . $req->mine_dp->extension();
+        
+            // Check if the technician data exists
+            $technician_data = DB::table($table_type)->where('user_id', $user_id)->first();
+        
+            if ($technician_data && isset($technician_data->profile_photo)) {
+                // Delete the previous file
+                $oldFile = public_path($technician_data->profile_photo);
+                if (File::exists($oldFile)) {
+                    File::delete($oldFile);
+                }
+            }
+        
+            // Ensure the directory exists
+            $directoryPath = public_path('images/dp');
+            if (!File::exists($directoryPath)) {
+                if (!File::makeDirectory($directoryPath, 0777, true, true)) {
+                    return response()->json(["success" => false, "message" => "Failed to create directory!"], 500);
+                }
+            }
+        
+            // Move the file to the directory
+            if (!$req->mine_dp->move($directoryPath, $imageName)) {
+                return response()->json(["success" => false, "message" => "File upload failed!"], 500);
+            }
+        
+            // Store file path in database
+            $imagePath = "/images/dp/" . $imageName;
+            $update = DB::table($table_type)->where('user_id', $user_id)->update([
+                'profile_photo' => $imagePath
+            ]);
+        
+            if (!$update) {
+                return response()->json(["success" => false, "message" => "Database update failed!"], 500);
+            }
+        
+            // Response message
+            return response()->json(["success" => true, "message" => "Profile picture uploaded successfully!"]);
+        }else{
+            // Response message
+            return response()->json(["success" => false, "message" => "An error has occured!"]);
+        }
     }
 }

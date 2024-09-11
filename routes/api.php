@@ -5,10 +5,12 @@ use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\Credentials;
 use App\Http\Controllers\MemberController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\TechnicianController;
 use App\Models\Administrator;
 use App\Models\Collection;
+use App\Models\Payment;
 use App\Models\SuperAdministrator;
 use App\Models\Technician;
 use Illuminate\Http\Request;
@@ -92,3 +94,14 @@ Route::post("admin/super_administrator/view/{super_admin_id}", [SuperAdminContro
 Route::post("admin/super_administrator/delete/{super_admin_id}", [SuperAdminController::class, "deleteSuperAdmin"])->middleware("authenticate");
 Route::post("admin/super_administrator/update", [SuperAdminController::class, "updateSuperAdmin"])->middleware("authenticate");
 Route::post("admin/super_administrator/new", [SuperAdminController::class, "newSuperAdmin"])->middleware("authenticate");
+Route::get("admin/payment/receipt/{payment_id}", [PaymentController::class, "paymentReceipt"]);
+
+// generate report
+Route::get("admin/reports", [ReportController::class, "generateReport"]);
+Route::get("member/reports", [MemberController::class, "generateReport"]);
+Route::get("technician/reports", [TechnicianController::class, "generateReport"]);
+
+// update the profile picture
+Route::post("technician/dp/update", [TechnicianController::class, "upload_dp"])->middleware("authenticate");
+Route::post("member/dp/update", [MemberController::class, "upload_dp"])->middleware("authenticate");
+Route::post("admin/dp/update", [AdministratorController::class, "upload_dp"])->middleware("authenticate");

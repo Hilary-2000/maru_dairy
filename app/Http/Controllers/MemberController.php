@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Classes\reports\PDF;
 use App\Models\collectionLogs;
 use App\Models\Credential;
 use App\Models\Deduction;
@@ -11,6 +12,8 @@ use App\Models\Payment;
 use DateTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
+
 date_default_timezone_set('Africa/Nairobi');
 
 class MemberController extends Controller
@@ -812,6 +815,7 @@ class MemberController extends Controller
     }
 
     function declinePayment($payment_id){
+
         $find_payment = DB::select("SELECT * FROM `payments` WHERE `payment_id` = '".$payment_id."'");
         if (count($find_payment) > 0) {
             // delete deduction
@@ -825,4 +829,275 @@ class MemberController extends Controller
         }
     }
     
+    function generateReport(Request $request){
+        // pass data
+        $report_type = $request->input("report_type");
+        $member_id = $request->input("member_id");
+        $start_date = $request->input("start_date")."000000";
+        $end_date = $request->input("end_date")."235959";
+
+
+        if($report_type == "collections"){
+            $collection = DB::select("SELECT MC.*, M.fullname AS member_fullname, M.membership FROM `milk_collections` AS MC
+                            LEFT JOIN members AS M 
+                            ON MC.member_id = M.user_id 
+                            WHERE `member_id` = '".$member_id."' AND `collection_date` BETWEEN '".$start_date."' AND '".$end_date."' 
+                            ORDER BY `collection_id` DESC");
+            
+
+            // group_collection
+            $group_collection = [];
+            $total_cost = 0;
+            $total_litres = 0;
+            if (count($collection) > 0) {
+                foreach ($collection as $key => $value) {
+                    $collection_date = date("Ymd", strtotime($value->collection_date))."235959";
+                    $collection_amount = $value->collection_amount;
+                    
+                    // get the milk price
+                    $select = DB::select("SELECT * FROM `milk_prices` WHERE `effect_date` < '".$collection_date."' AND `status` = '1' ORDER BY `price_id` DESC LIMIT 1");
+                    $price = (count($select) > 0 ? $select[0]->amount : 0) * $collection_amount;
+                    $total_cost += $price;
+                    $total_litres += $collection_amount;
+                    $value->price = number_format($price, 2);
+                    $value->ppl = number_format((count($select) > 0 ? $select[0]->amount : 0), 2);
+                    
+                    if (isset($group_collection[substr($value->collection_date,0,8)])) {
+                        array_push($group_collection[substr($value->collection_date,0,8)]['collection'], $value);
+                    }else{
+                        $group_collection[substr($value->collection_date,0,8)] = array(
+                            "date" => substr($value->collection_date,0,8),
+                            "fulldate" => date("D dS M Y", strtotime(substr($value->collection_date,0,8))),
+                            "collection" => [$value]
+                        );
+                    }
+                }
+            }
+            
+            $pdf = new PDF("P","mm","A4");
+            $pdf->set_document_title("Collection between ".date("D dS M Y", strtotime($start_date))." to ".date("D dS M Y", strtotime($end_date)));
+            $pdf->AddPage();
+            $pdf->SetFont('Times', 'B', 10);
+            $pdf->SetMargins(10, 5);
+            $pdf->AddFont("robotomonoa",'','RobotoMono-Regular.php');
+            $pdf->AddFont("robotomonob",'','RobotoMono-Bold.php');
+            $pdf->Ln();
+            $pdf->SetFont('robotomonob', '', 10);
+            $pdf->Cell(40, 10, "Total Payment:", 1, 0);
+            $pdf->SetFont('robotomonoa', '', 10);
+            $pdf->Cell(40, 10, "Kes ".number_format($total_cost, 2), 1, 1);
+
+            $pdf->SetFont('robotomonob', '', 10);
+            $pdf->Cell(40, 10, "Litres Collected:", 1, 0);
+            $pdf->SetFont('robotomonoa', '', 10);
+            $pdf->Cell(40, 10, number_format($total_litres, 2)." Litres", 1, 1);
+            $pdf->Ln();
+            foreach ($group_collection as $key => $value) {
+                $pdf->SetFont('robotomonob', 'U', 10);
+                $pdf->Cell(200,10,"Collections for : ".date("D dS M Y", strtotime($key)),0,1, "C");
+
+                // table header
+                $pdf->SetFont('robotomonob', '', 10);
+                $pdf->Cell(15,10, "#", 1, 0, "C");
+                $pdf->Cell(20,10, "Litres", 1, 0, "C");
+                $pdf->Cell(35,10, "Price", 1, 0, "C");
+                $pdf->Cell(50,10, "Price/L", 1, 0, "C");
+                $pdf->Cell(25,10, "Time.", 1, 0, "C");
+                $pdf->Cell(40,10, "Membeship No.", 1, 1, "C");
+                $pdf->SetFont('robotomonoa', '', 10);
+                $total_litres = 0;
+                $total_collection = 0;
+                foreach ($value['collection'] as $keyed => $valued) {
+                    $pdf->Cell(15,6, ($keyed + 1).".", 1, 0, "L");
+                    $pdf->Cell(20,6, $valued->collection_amount, 1, 0, "L");
+                    $pdf->Cell(35,6, "Kes ".$valued->price, 1, 0, "L");
+                    $pdf->Cell(50,6, $valued->ppl, 1, 0, "L");
+                    $pdf->Cell(25,6, date("H:i:sA", strtotime($valued->collection_date)), 1, 0, "L");
+                    $pdf->Cell(40,6, $valued->membership, 1, 1, "L");
+
+                    // total litres
+                    $total_litres += (str_replace(",","",$valued->collection_amount)*1);
+                    $total_collection += (str_replace(",","",$valued->price)*1);
+                }
+                $pdf->SetFont('robotomonob', '', 10);
+                $pdf->Cell(15,6, "Total", 1, 0, "L");
+                $pdf->Cell(20,6, $total_litres, 1, 0, "L");
+                $pdf->Cell(35,6, "Kes ".number_format($total_collection), 1, 0, "L");
+                $pdf->Ln(10);
+            }
+            $pdf->Output();
+        }elseif ($report_type == "payments"){
+            $members = DB::select("SELECT * FROM `members` WHERE `user_id` = '".$member_id."' ORDER BY `user_id` DESC");
+            $total_cost = 0;
+            $total_litres = 0;
+            foreach ($members as $key => $member) {
+                $collection = DB::select("SELECT * FROM `milk_collections` WHERE `member_id` = ? AND `collection_date` BETWEEN ? AND ?", [$member->user_id, $start_date, $end_date]);
+                $price_collection = $this->getPrice($collection);
+                $total_cost += $price_collection[0];
+                $total_litres += $price_collection[1];
+                $members[$key]->total_price = $price_collection[0];
+                $members[$key]->total_litres = $price_collection[1];
+                $members[$key]->collection_days = count($collection);
+            }
+            
+            // get members
+            if(count($members) > 0){
+                $pdf = new PDF("P","mm","A4");
+                $pdf->set_document_title("Collection between ".date("D dS M Y", strtotime($start_date))." to ".date("D dS M Y", strtotime($end_date)));
+                $pdf->AddPage();
+                $pdf->SetFont('Times', 'B', 10);
+                $pdf->SetMargins(10, 5);
+                $pdf->AddFont("robotomonoa",'','RobotoMono-Regular.php');
+                $pdf->AddFont("robotomonob",'','RobotoMono-Bold.php');
+                $pdf->Ln();
+
+                $not_confirmed = DB::select("SELECT * FROM `milk_collections` WHERE `member_id` = ? AND `collection_status` = '0' AND `collection_date` BETWEEN ? AND ?", [$member->user_id, $start_date, $end_date]);
+                $accepted = DB::select("SELECT * FROM `milk_collections` WHERE `member_id` = ? AND `collection_status` = '1' AND `collection_date` BETWEEN ? AND ?", [$member->user_id, $start_date, $end_date]);
+                $declined = DB::select("SELECT * FROM `milk_collections` WHERE `member_id` = ? AND `collection_status` = '2' AND `collection_date` BETWEEN ? AND ?", [$member->user_id, $start_date, $end_date]);
+    
+    
+                $pdf->SetFont('robotomonob', '', 10);
+                $pdf->Cell(40, 10, "Fullname:", 1, 0);
+                $pdf->SetFont('robotomonoa', "", 10);
+                $pdf->Cell(80, 10, ucwords(strtolower($members[0]->fullname)), 1, 1);
+
+                $pdf->SetFont('robotomonob', '', 10);
+                $pdf->Cell(40, 10, "Membership:", 1, 0);
+                $pdf->SetFont('robotomonoa', "", 10);
+                $pdf->Cell(80, 10, (($members[0]->membership)), 1, 1);
+
+                $pdf->SetFont('robotomonob', '', 10);
+                $pdf->Cell(40, 10, "Not Confirmed:", 1, 0);
+                $pdf->SetFont('robotomonoa', "", 10);
+                $pdf->Cell(80, 10, count($not_confirmed)." Collection(s)", 1, 1);
+
+                $pdf->SetFont('robotomonob', '', 10);
+                $pdf->Cell(40, 10, "Accepted:", 1, 0);
+                $pdf->SetFont('robotomonoa', "", 10);
+                $pdf->Cell(80, 10, count($accepted)." Collection(s)", 1, 1);
+
+                $pdf->SetFont('robotomonob', '', 10);
+                $pdf->Cell(40, 10, "Declined:", 1, 0);
+                $pdf->SetFont('robotomonoa', "", 10);
+                $pdf->Cell(80, 10, count($declined)." Collection(s)", 1, 1);
+    
+                $pdf->SetFont('robotomonob', '', 10);
+                $pdf->Cell(40, 10, "Total Payment:", 1, 0);
+                $pdf->SetFont('robotomonoa', '', 10);
+                $pdf->Cell(80, 10, "Kes ".number_format($total_cost, 2), 1, 1);
+    
+                $pdf->SetFont('robotomonob', '', 10);
+                $pdf->Cell(40, 10, "Litres Collected:", 1, 0);
+                $pdf->SetFont('robotomonoa', '', 10);
+                $pdf->Cell(80, 10, number_format($total_litres, 2)." Litres", 1, 1);
+    
+                // table header
+                $pdf->Ln();
+                $pdf->SetFont('robotomonob', 'U', 10);
+                $pdf->Cell(200,10, "Collections and payments", 0, 1, "C");
+                $pdf->SetFont('robotomonob', '', 9);
+                $pdf->Cell(10,8, "#", 1, 0, "C");
+                $pdf->Cell(55,8, "Member", 1, 0, "C");
+                $pdf->Cell(35,8, "Membership", 1, 0, "C");
+                $pdf->Cell(35,8, "Litres", 1, 0, "C");
+                $pdf->Cell(30,8, "Price", 1, 0, "C");
+                $pdf->Cell(30,8, "Records", 1, 1, "C");
+                $pdf->SetFont('robotomonoa', '', 10);
+                foreach ($members as $key => $member) {
+                    $pdf->Cell(10,7, ($key+1).".", 1, 0, "L");
+                    $pdf->Cell(55,7, ucwords(strtolower($member->fullname)), 1, 0, "L");
+                    $pdf->Cell(35,7, $member->membership, 1, 0, "L");
+                    $pdf->Cell(35,7, number_format($member->total_litres, 2), 1, 0, "L");
+                    $pdf->Cell(30,7, "Kes ".number_format($member->total_price), 1, 0, "L");
+                    $pdf->Cell(30,7, $member->collection_days, 1, 1, "L");
+                }
+                $pdf->SetFont('robotomonob', '', 10);
+                $pdf->Cell(65,7, "", 0, 0, "L");
+                $pdf->Cell(35,7, "Total", 1, 0, "L");
+                $pdf->Cell(35,7, number_format($total_litres, 2), 1, 0, "L");
+                $pdf->Cell(30,7, "Kes ".number_format($total_cost, 2), 1, 1, "L");
+                $pdf->Output();
+            }else{
+                return response()->json(["success" => false, "message" => "Invalid member!"]);
+            }
+        }else{
+            $pdf = new PDF("P","mm","A4");
+            $pdf->set_document_title("Collection between ".date("D dS M Y", strtotime($start_date))." to ".date("D dS M Y", strtotime($end_date)));
+            $pdf->AddPage();
+            $pdf->SetFont('Times', 'B', 10);
+            $pdf->SetMargins(10, 5);
+            $pdf->AddFont("robotomonoa",'','RobotoMono-Regular.php');
+            $pdf->AddFont("robotomonob",'','RobotoMono-Bold.php');
+            $pdf->SetFont('robotomonob', '', 10);
+            $pdf->Cell(190, 10, "No options selected", 1, 0,"C");
+            $pdf->SetFont('robotomonoa', "", 10);
+            $pdf->Output();
+        }
+    }
+    function getPrice($data){
+        $total_price = 0;
+        $total_litres = 0;
+        foreach ($data as $key => $value) {
+            $collection_date = date("Ymd", strtotime($value->collection_date))."000000";
+            $collection_amount = $value->collection_amount;
+            $total_litres += $value->collection_amount;
+
+            // get the milk price
+            $select = DB::select("SELECT * FROM `milk_prices` WHERE `effect_date` < '".$collection_date."' AND `status` = '1' ORDER BY `price_id` DESC LIMIT 1");
+            $total_price += (count($select) > 0 ? $select[0]->amount : 0) * $collection_amount;
+        }
+
+        // return price
+        return [$total_price, $total_litres];
+    }
+
+    function upload_dp(Request $req)
+    {
+        // Validate the request
+        $req->validate([
+            'mine_dp' => 'required|image|mimes:jpeg,png,jpg,gif,svg',
+            'user_id' => 'required|integer'
+        ]);
+    
+        // Set variables
+        $user_id = $req->input('user_id');
+        $imageName = $user_id . "_" . date("YmdHis") . '.' . $req->mine_dp->extension();
+    
+        // Check if the technician data exists
+        $technician_data = DB::table('members')->where('user_id', $user_id)->first();
+    
+        if ($technician_data && isset($technician_data->profile_photo)) {
+            // Delete the previous file
+            $oldFile = public_path($technician_data->profile_photo);
+            if (File::exists($oldFile)) {
+                File::delete($oldFile);
+            }
+        }
+    
+        // Ensure the directory exists
+        $directoryPath = public_path('images/dp');
+        if (!File::exists($directoryPath)) {
+            if (!File::makeDirectory($directoryPath, 0777, true, true)) {
+                return response()->json(["success" => false, "message" => "Failed to create directory!"], 500);
+            }
+        }
+    
+        // Move the file to the directory
+        if (!$req->mine_dp->move($directoryPath, $imageName)) {
+            return response()->json(["success" => false, "message" => "File upload failed!"], 500);
+        }
+    
+        // Store file path in database
+        $imagePath = "/images/dp/" . $imageName;
+        $update = DB::table('members')->where('user_id', $user_id)->update([
+            'profile_photo' => $imagePath
+        ]);
+    
+        if (!$update) {
+            return response()->json(["success" => false, "message" => "Database update failed!"], 500);
+        }
+    
+        // Response message
+        return response()->json(["success" => true, "message" => "Profile picture uploaded successfully!"]);
+    }
 }
