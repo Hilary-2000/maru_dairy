@@ -169,7 +169,7 @@ class TechnicianController extends Controller
     function getTechnicians()
     {
         // technicians
-        $technicians = DB::select("SELECT * FROM `technicians` ORDER BY `user_id` DESC");
+        $technicians = DB::select("SELECT * FROM `technicians` ORDER BY `fullname` ASC");
 
         if (count($technicians)) {
             return response()->json(["success" => true, "technicians" => $technicians]);

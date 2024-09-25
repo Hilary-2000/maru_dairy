@@ -927,7 +927,7 @@ class MemberController extends Controller
             }
             $pdf->Output();
         }elseif ($report_type == "payments"){
-            $members = DB::select("SELECT * FROM `members` WHERE `user_id` = '".$member_id."' ORDER BY `user_id` DESC");
+            $members = DB::select("SELECT * FROM `members` WHERE `user_id` = '".$member_id."' ORDER BY `fullname` ASC");
             $total_cost = 0;
             $total_litres = 0;
             foreach ($members as $key => $member) {

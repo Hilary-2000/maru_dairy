@@ -173,7 +173,7 @@ class AdministratorController extends Controller
 
     // MEMBERS
     function admin_members(){
-        $members = DB::select("SELECT * FROM `members` ORDER BY `user_id` DESC");
+        $members = DB::select("SELECT * FROM `members` ORDER BY `fullname` ASC");
         return response()->json(["success" => true, "members"=>$members]);
     }
     

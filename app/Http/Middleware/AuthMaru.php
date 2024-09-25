@@ -29,10 +29,6 @@ class AuthMaru
         if (!$authenticated) {
             return response()->json(["success" => false, "message" => "Authentication failed!"], 401);
         }
-
-        // failed to authenticate
-        // return response()->json(["success" => true, "message" => "Authentication success!"], 200);
-        
         // check if auth_code is valid
         return $next($request);
     }

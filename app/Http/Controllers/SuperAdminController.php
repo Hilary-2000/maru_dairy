@@ -19,13 +19,13 @@ class SuperAdminController extends Controller
         $super_admin_id = $credential != null ? $credential->user_id : "0";
 
         // get the administrators
-        $super_admin = DB::select("SELECT * FROM `super_administrators` WHERE `user_id` != ? ORDER BY `user_id` DESC", [$super_admin_id]);
+        $super_admin = DB::select("SELECT * FROM `super_administrators` WHERE `user_id` != ? ORDER BY `fullname` ASC", [$super_admin_id]);
         return response()->json(["success" => true, "super_administrators" => $super_admin]);
     }
 
     // super administrator details
     function superAdministratorDetails($super_admin_id){
-        $super_admin = DB::select("SELECT * FROM `super_administrators` WHERE `user_id` = ? ORDER BY `user_id` DESC", [$super_admin_id]);
+        $super_admin = DB::select("SELECT * FROM `super_administrators` WHERE `user_id` = ? ORDER BY `fullname` ASC", [$super_admin_id]);
         if (count($super_admin)) {
             // return response
             return response()->json(["success" => true, "super_admin" => $super_admin[0]]);
@@ -35,7 +35,7 @@ class SuperAdminController extends Controller
     }
 
     function deleteSuperAdmin($super_admin_id){
-        $super_admin = DB::select("SELECT * FROM `super_administrators` WHERE `user_id` = ? ORDER BY `user_id` DESC", [$super_admin_id]);
+        $super_admin = DB::select("SELECT * FROM `super_administrators` WHERE `user_id` = ? ORDER BY `fullname` ASC", [$super_admin_id]);
         if (count($super_admin)) {
             // return response
             $delete = DB::delete("DELETE FROM `super_administrators` WHERE `user_id` = ?", [$super_admin_id]);
