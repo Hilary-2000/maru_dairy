@@ -66,7 +66,7 @@ class MemberController extends Controller
     // get new members
     function getMembers(){
         // get the data
-        $members = Member::orderBy("user_id", "desc")->limit(500)->get();
+        $members = Member::orderBy("fullname", "asc")->limit(500)->get();
         
         // CHECK IF MEMBERS MILK WAS COLLECTED
         foreach ($members as $key => $value) {

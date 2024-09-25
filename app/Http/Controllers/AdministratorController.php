@@ -331,7 +331,7 @@ class AdministratorController extends Controller
         $member->membership = $request->input("membership");
         $member->gender = $request->input("gender");
         $member->username = $member->phone_number;
-        $member->date_registered = date("YmdHis");
+        $member->date_registered = $request->input("registration_date") ? date("YmdHis", strtotime($request->input("registration_date"))) : date("YmdHis");
         $member->password = "1234";
         $member->save();
 
@@ -497,6 +497,22 @@ class AdministratorController extends Controller
     function updateMilk(Request $request){
         // update the milk details
         $milk_price_details = MilkPrice::find($request->input("price_id"));
+
+        // preceeding milk prices
+        $preceeding_milk_prices = DB::select("SELECT * FROM `milk_prices` WHERE `price_id` > '".$request->input("price_id")."' ORDER BY `price_id` ASC LIMIT 1;");
+        if (count($preceeding_milk_prices) > 0) {
+            // check the effect date if its less that whats set
+            $effect_date = date("YmdHis", strtotime($preceeding_milk_prices[0]->effect_date));
+            $set_date = date("YmdHis", strtotime($request->input("effect_date")));
+
+            // SET DATE & EFFECT DATE
+            if($set_date >= $effect_date){
+                $new_date = $this->modifyDate($set_date, "1");
+                DB::update("UPDATE `milk_prices` SET `effect_date` = ? WHERE `price_id` = ?", [$new_date, $preceeding_milk_prices[0]->price_id]);
+            }
+        }
+
+        // milk details
         if ($milk_price_details) {
             // update the milk details
             $milk_price_details->amount = $request->input("amount");
