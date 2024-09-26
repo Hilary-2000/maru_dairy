@@ -10,10 +10,10 @@ class PDF extends FPDF
 {
     protected $B = 0;
     public $company_logo = "/logo.png";
-    protected $company_name = "Maru Diary";
+    protected $company_name = "Maru Dairy Farmers Society Ltd";
     public $company_contact = "0114 692 339";
     public $company_email = "marudairy2022@gmail.com";
-    public $company_document_title = "Maru Diary";
+    public $company_document_title = "Maru Dairy Farmers Society Ltd";
     public $website_name = "billing.hypbits.com";
     protected $company_header_position = 200;
 

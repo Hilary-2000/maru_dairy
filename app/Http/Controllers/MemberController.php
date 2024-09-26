@@ -585,7 +585,8 @@ class MemberController extends Controller
                 }
 
                 // earning data
-                $earn = array("id" => $payment_id, "confirmed" => $confirmed, "month_paid_for" => date("M-Y", strtotime($start)), "raw_start_date" => $start, "litres_collected" => $litres_collected, "raw_end_date" => $end, "raw_amount" => $confirmed ? $payment_amount : $collection_amount, "payment_amount" => $confirmed ? number_format($payment_amount, 2) : number_format($collection_amount, 2), "start" => date("dS M Y", strtotime($start)), "end" => date("dS M Y", strtotime($this-> addDate("$end-01", '-1 days'))), "publish_date" => date("dS M Y", strtotime($end)), "transaction_cost" => $this->mpesa_transaction_cost($collection_amount));
+                $total_payment = $payment_id != null ? PaymentController::getDeduction($payment_id) : number_format($collection_amount, 2);
+                $earn = array("id" => $payment_id, "confirmed" => $confirmed, "month_paid_for" => date("M-Y", strtotime($start)), "raw_start_date" => $start, "litres_collected" => $litres_collected, "raw_end_date" => $end, "raw_amount" => $confirmed ? $payment_amount : $collection_amount, "payment_amount" => $confirmed ? number_format($payment_amount, 2) : number_format($collection_amount, 2), "start" => date("dS M Y", strtotime($start)), "end" => date("dS M Y", strtotime($this-> addDate("$end-01", '-1 days'))), "publish_date" => date("dS M Y", strtotime($end)), "transaction_cost" => $this->mpesa_transaction_cost($collection_amount), "total_payment" => number_format($total_payment, 2));
                 array_push($earnings, $earn);
 
                 // check what was earned every month
@@ -849,6 +850,7 @@ class MemberController extends Controller
             $group_collection = [];
             $total_cost = 0;
             $total_litres = 0;
+            $collections = [];
             if (count($collection) > 0) {
                 foreach ($collection as $key => $value) {
                     $collection_date = date("Ymd", strtotime($value->collection_date))."235959";
@@ -861,16 +863,9 @@ class MemberController extends Controller
                     $total_litres += $collection_amount;
                     $value->price = number_format($price, 2);
                     $value->ppl = number_format((count($select) > 0 ? $select[0]->amount : 0), 2);
-                    
-                    if (isset($group_collection[substr($value->collection_date,0,8)])) {
-                        array_push($group_collection[substr($value->collection_date,0,8)]['collection'], $value);
-                    }else{
-                        $group_collection[substr($value->collection_date,0,8)] = array(
-                            "date" => substr($value->collection_date,0,8),
-                            "fulldate" => date("D dS M Y", strtotime(substr($value->collection_date,0,8))),
-                            "collection" => [$value]
-                        );
-                    }
+
+                    // collections
+                    array_push($collections, $value);
                 }
             }
             
@@ -892,39 +887,37 @@ class MemberController extends Controller
             $pdf->SetFont('robotomonoa', '', 10);
             $pdf->Cell(40, 10, number_format($total_litres, 2)." Litres", 1, 1);
             $pdf->Ln();
-            foreach ($group_collection as $key => $value) {
-                $pdf->SetFont('robotomonob', 'U', 10);
-                $pdf->Cell(200,10,"Collections for : ".date("D dS M Y", strtotime($key)),0,1, "C");
 
-                // table header
-                $pdf->SetFont('robotomonob', '', 10);
-                $pdf->Cell(15,10, "#", 1, 0, "C");
-                $pdf->Cell(20,10, "Litres", 1, 0, "C");
-                $pdf->Cell(35,10, "Price", 1, 0, "C");
-                $pdf->Cell(50,10, "Price/L", 1, 0, "C");
-                $pdf->Cell(25,10, "Time.", 1, 0, "C");
-                $pdf->Cell(40,10, "Membeship No.", 1, 1, "C");
-                $pdf->SetFont('robotomonoa', '', 10);
-                $total_litres = 0;
-                $total_collection = 0;
-                foreach ($value['collection'] as $keyed => $valued) {
-                    $pdf->Cell(15,6, ($keyed + 1).".", 1, 0, "L");
-                    $pdf->Cell(20,6, $valued->collection_amount, 1, 0, "L");
-                    $pdf->Cell(35,6, "Kes ".$valued->price, 1, 0, "L");
-                    $pdf->Cell(50,6, $valued->ppl, 1, 0, "L");
-                    $pdf->Cell(25,6, date("H:i:sA", strtotime($valued->collection_date)), 1, 0, "L");
-                    $pdf->Cell(40,6, $valued->membership, 1, 1, "L");
+            // table column titles
+            $pdf->SetFont('robotomonob', '', 10);
+            $pdf->Cell(15,10, "#", 1, 0, "C");
+            $pdf->Cell(20,10, "Litres", 1, 0, "C");
+            $pdf->Cell(35,10, "Price", 1, 0, "C");
+            $pdf->Cell(20,10, "Price/L", 1, 0, "C");
+            $pdf->Cell(35,10, "Date.", 1, 0, "C");
+            $pdf->Cell(25,10, "Time.", 1, 0, "C");
+            $pdf->Cell(35,10, "Membeship No.", 1, 1, "C");
+            $pdf->SetFont('robotomonoa', '', 8);
+            $total_litres = 0;
+            $total_collection = 0;
+            foreach ($collections as $keyed => $valued) {
+                $pdf->Cell(15,6, ($keyed + 1).".", 1, 0, "L");
+                $pdf->Cell(20,6, $valued->collection_amount, 1, 0, "L");
+                $pdf->Cell(35,6, "Kes ".$valued->price, 1, 0, "L");
+                $pdf->Cell(20,6, $valued->ppl, 1, 0, "L");
+                $pdf->Cell(35,6, date("D dS M Y", strtotime($valued->collection_date)), 1, 0, "L");
+                $pdf->Cell(25,6, date("H:i:sA", strtotime($valued->collection_date)), 1, 0, "L");
+                $pdf->Cell(35,6, $valued->membership, 1, 1, "L");
 
-                    // total litres
-                    $total_litres += (str_replace(",","",$valued->collection_amount)*1);
-                    $total_collection += (str_replace(",","",$valued->price)*1);
-                }
-                $pdf->SetFont('robotomonob', '', 10);
-                $pdf->Cell(15,6, "Total", 1, 0, "L");
-                $pdf->Cell(20,6, $total_litres, 1, 0, "L");
-                $pdf->Cell(35,6, "Kes ".number_format($total_collection), 1, 0, "L");
-                $pdf->Ln(10);
+                // total litres
+                $total_litres += (str_replace(",","",$valued->collection_amount)*1);
+                $total_collection += (str_replace(",","",$valued->price)*1);
             }
+            $pdf->SetFont('robotomonob', '', 8);
+            $pdf->Cell(15,6, "Total", 1, 0, "L");
+            $pdf->Cell(20,6, $total_litres, 1, 0, "L");
+            $pdf->Cell(35,6, "Kes ".number_format($total_collection, 2), 1, 0, "L");
+            $pdf->Ln(10);
             $pdf->Output();
         }elseif ($report_type == "payments"){
             $members = DB::select("SELECT * FROM `members` WHERE `user_id` = '".$member_id."' ORDER BY `fullname` ASC");

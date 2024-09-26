@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\Credentials;
+use App\Http\Controllers\DeductionController;
 use App\Http\Controllers\MemberController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ReportController;
@@ -105,3 +106,10 @@ Route::get("technician/reports", [TechnicianController::class, "generateReport"]
 Route::post("technician/dp/update", [TechnicianController::class, "upload_dp"])->middleware("authenticate");
 Route::post("member/dp/update", [MemberController::class, "upload_dp"])->middleware("authenticate");
 Route::post("admin/dp/update", [AdministratorController::class, "upload_dp"])->middleware("authenticate");
+
+// deductions
+Route::post("admin/deductions", [DeductionController::class,"getDeductions"])->middleware("authenticate");
+Route::post("admin/deductions/delete/{deduction_id}", [DeductionController::class, "deleteDeductions"])->middleware("authenticate");
+Route::post("admin/deductions/update", [DeductionController::class, "updateDeductions"])->middleware("authenticate");
+Route::post("admin/deductions/add", [DeductionController::class, "addDeduction"])->middleware("authenticate");
+Route::post("admin/deductions/update_status", [DeductionController::class, "updateDeductionStatus"])->middleware("authenticate");

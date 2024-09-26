@@ -47,6 +47,28 @@ class PaymentController extends Controller
         }
     }
 
+    public static function getDeduction($payment_id){
+        $payment = Payment::find($payment_id);
+        if($payment){
+            $deductions = DB::select("SELECT * FROM `deductions` WHERE `payment_id` = '".$payment_id."'");
+            $total_deductions = 0;
+            // sum the added deduction
+            foreach ($deductions as $key => $deduct) {
+                $total_deductions += $deduct->deduction_amount;
+            }
+
+            // sum the transaction fees
+            if ($payment->deduct_transaction_fees == "yes") {
+                $total_deductions += $payment->transaction_cost;
+            }
+
+            // payment
+            return $payment->payment_amount - $total_deductions;
+        }else{
+            return 0;
+        }
+    }
+
     function paymentReceipt($payment_id){
         // payment
         $payment = DB::select("SELECT * FROM `payments` WHERE `payment_id` = ?",[$payment_id]);
