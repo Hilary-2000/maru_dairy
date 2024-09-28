@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Credential;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use App\Classes\phpmailer\src\PHPMailer;
 
 
 date_default_timezone_set('Africa/Nairobi');
@@ -100,5 +102,101 @@ class Credentials extends Controller
         }else {
             return response()->json(["success" => false, "message" => "Invalid token"], 401);
         }
+    }
+
+    function resetPassword(Request $request){
+        // reset password
+        $username = $request->input("username");
+
+        // scheck if the username is valif
+        $credential = DB::select("SELECT * FROM `credentials` WHERE `username` = ?", [$username]);
+
+        if (count($credential) > 0) {
+            // reset password
+            $new_password = $this->getToken(8);
+            $update = DB::update("UPDATE `credentials` SET `password` = ? WHERE `username` = ?", [$new_password, $username]);
+
+            // send the passowrd via the email
+            $select = "";
+            $table_name = "";
+            if($credential[0]->user_type == "1"){
+                $select = "SELECT * FROM `technicians` WHERE `user_id` = ?";
+                $table_name = "technicians";
+            }elseif($credential[0]->user_type == "2"){
+                $select = "SELECT * FROM `administrators` WHERE `user_id` = ?";
+                $table_name = "administrators";
+            }elseif($credential[0]->user_type == "3"){
+                $select = "SELECT * FROM `super_administrators` WHERE `user_id` = ?";
+                $table_name = "super_administrators";
+            }elseif($credential[0]->user_type == "4"){
+                $select = "SELECT * FROM `members` WHERE `user_id` = ?";
+                $table_name = "members";
+            }
+
+            $user_data = DB::select($select, [$credential[0]->user_id]);
+
+            // update the users data
+            $update = DB::update("UPDATE `$table_name` SET `password` = ? WHERE `user_id` = ?", [$new_password, $credential[0]->user_id]);
+
+            // send the email to that email address.
+            if(count($user_data) > 0){
+                $email = $user_data[0]->email;
+                if ($email != null && strlen($email) > 0) {
+                    // USE PHP MAILER
+                    $sender_name = "Maru Dairy Co-op";
+                    $email_username = "hilaryme45@gmail.com";
+                    $email_password = "qdwjzlufnyxfncrb";
+                    
+                    $mail = new PHPMailer(true);
+                    $mail->isSMTP();
+                    $mail->Host = 'smtp.gmail.com';
+                    $mail->SMTPAuth = true;
+                    $mail->Username = $email_username;
+                    $mail->Password = $email_password;
+                    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                    $mail->Port = 587;
+    
+                    $message = "<div style='font-family:nunito;'>Hello ".ucwords(strtolower($user_data[0]->fullname)).",\r\n\r\n<br>";  // Double new line for spacing between paragraphs
+                    $message .= "I hope this email finds you well.\r\n\r\n<br>";  // More content
+                    $message .= "Your password has been reset successfully. Use it to login and set your new password!\r\n\r\n<br><br>";  // Another new line
+                    $message .= "Your password is : <strong>".$new_password."</strong>\r\n\r\n<br><br>";  // Another new line
+                    $message .= "<p style='font-color:red;'><strong>If this password reset was not initiated by you we highly recommend you use this password to reset both your username and password!</strong>\r\n\r\n<br><br>";  // Another new line
+                    $message .= "Regards,\r\n<br>";  // Signature block
+                    $message .= "Maru Diary Cooperative Ltd</div>";
+
+                    $message = "<html>
+                                <head>
+                                <title>Formatted Email Example</title>
+                                <style>
+                                    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700&display=swap');
+                                </style>
+                                </head>
+                                <body style='font-family: Nunito, sans-serif; font-size: 15px;'>
+                                    <p>Hello ".ucwords(strtolower($user_data[0]->fullname)).",</p>
+                                    <p>Your password has been reset successfully. Use it to login and set your new password!</p>
+                                    <p>Your new password is : <strong>".$new_password."</strong></p>
+                                    <p style='color:red;'><b>Note:</b></p>
+                                    <p><strong>If this password reset was not initiated by you we highly recommend you use this password to reset both your username and password!</strong></p>
+                                    <p>Best regards,<br>Maru Dairy Co-op</p>
+                                </body>
+                                </html>";
+                    
+                    
+                    $mail->setFrom($email_username,$sender_name);
+                    $mail->addAddress($email);
+                    $mail->isHTML(true);
+                    $mail->Subject = "Maru Dairy Password Reset";
+                    $mail->Body = $message;
+            
+                    $mail->send();
+                    $email_explode = explode("@", $email);
+                    return response()->json(["success" => true, "message" => "New password has been successfully sent to ".substr($email_explode[0], 0, number_format(strlen($email_explode[0])/2))."*****".$email_explode[1]."!"], 200);
+                }else{
+                    return response()->json(["success" => false, "message" => "Your email address has not been setup yet!"], 200);
+                }
+            }
+            return response()->json(["success" => false, "message" => "Invalid User!"], 200);
+        }
+        return response()->json(["success" => false, "message" => "Invalid Credentials"], 200);
     }
 }

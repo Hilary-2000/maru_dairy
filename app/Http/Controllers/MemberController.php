@@ -585,8 +585,23 @@ class MemberController extends Controller
                 }
 
                 // earning data
-                $total_payment = $payment_id != null ? PaymentController::getDeduction($payment_id) : number_format($collection_amount, 2);
-                $earn = array("id" => $payment_id, "confirmed" => $confirmed, "month_paid_for" => date("M-Y", strtotime($start)), "raw_start_date" => $start, "litres_collected" => $litres_collected, "raw_end_date" => $end, "raw_amount" => $confirmed ? $payment_amount : $collection_amount, "payment_amount" => $confirmed ? number_format($payment_amount, 2) : number_format($collection_amount, 2), "start" => date("dS M Y", strtotime($start)), "end" => date("dS M Y", strtotime($this-> addDate("$end-01", '-1 days'))), "publish_date" => date("dS M Y", strtotime($end)), "transaction_cost" => $this->mpesa_transaction_cost($collection_amount), "total_payment" => number_format($total_payment, 2));
+                $total_payment = $payment_id != null ? PaymentController::getDeduction($payment_id) : $collection_amount;
+                
+                $earn = array(
+                    "id" => $payment_id, 
+                    "confirmed" => $confirmed, 
+                    "month_paid_for" => date("M-Y", strtotime($start)), 
+                    "raw_start_date" => $start, 
+                    "litres_collected" => $litres_collected, 
+                    "raw_end_date" => $end, 
+                    "raw_amount" => $confirmed ? $payment_amount : $collection_amount, 
+                    "payment_amount" => $confirmed ? number_format($payment_amount, 2) : number_format($collection_amount, 2), 
+                    "start" => date("dS M Y", strtotime($start)), 
+                    "end" => date("dS M Y", strtotime($this-> addDate("$end-01", '-1 days'))), 
+                    "publish_date" => date("dS M Y", strtotime($end)), 
+                    "transaction_cost" => $this->mpesa_transaction_cost($collection_amount), 
+                    "total_payment" => number_format($total_payment, 2)
+                );
                 array_push($earnings, $earn);
 
                 // check what was earned every month
@@ -698,7 +713,7 @@ class MemberController extends Controller
                     $end = $year."1231235959";
     
                     // subscription payments
-                    $deduction = DB::select("SELECT * FROM `deductions` WHERE `deduction_type` = 'membership_fees',  `member_id` = ? AND `deduction_date` BETWEEN ? AND ? ORDER BY `id` DESC", [$member_id, $start, $end]);
+                    $deduction = DB::select("SELECT * FROM `deductions` WHERE `deduction_type` = 'membership_fees' AND  `member_id` = ? AND `deduction_date` BETWEEN ? AND ? ORDER BY `id` DESC", [$member_id, $start, $end]);
     
                     // new annual payment
                     $annual_subscription = array("id" => "-1", "deduction_type" => "increase", "deduction_amount" => "1000", "balance" => "1000", "member_id" => $member_id, "deduction_date" => $year."0101000000", "clear_date" => date("dS M Y", strtotime($year."0101000000")));

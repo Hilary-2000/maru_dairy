@@ -40,8 +40,11 @@ class PaymentController extends Controller
             $payment->date_paid = date("D dS M Y : H:i:sA", strtotime($payment->date_paid));
             $payment->payment_amount = number_format($payment->payment_amount, 2);
             $payment->total_payment = number_format($payment->total_payment, 2);
+
+            // deductions
+            $deduction_type = DB::select("SELECT * FROM `deduction_type` ORDER BY `deduction_name` ASC");
             
-            return response()->json(["success" => true, "payment" => $payment]);
+            return response()->json(["success" => true, "payment" => $payment, "deduction_type" => $deduction_type]);
         }else{
             return response()->json(["success" => "false", "message" => "Payment not found, maybe its deleted!"]);
         }
@@ -159,18 +162,17 @@ class PaymentController extends Controller
     }
 
     function deduction_type($deduction_type){
-        if($deduction_type == "subscription"){
-            return "Subscription";
-          }elseif($deduction_type == "joining_fees"){
-            return "Joining Fees";
-          }elseif($deduction_type == "membership_fees"){
-            return "Membership Fees";
-          }elseif($deduction_type == "advance"){
-            return "Advance";
-          }elseif($deduction_type == "balance_carry_over"){
-            return "Balance Carry-Over";
-          }elseif($deduction_type == "transaction_cost"){
+        // get the deduction type
+        $deduction_type = DB::select("SELECT * FROM `deduction_type` WHERE `deduction_id` = ?", [$deduction_type]);
+        if(count($deduction_type) > 0){
+            return $deduction_type[0]->deduction_name;
+        }
+
+        // deduction type
+        if($deduction_type == "transaction_cost"){
             return "Transaction Cost";
-          }
+        }
+
+        return "N/A";
     }
 }

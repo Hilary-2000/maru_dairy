@@ -6,14 +6,17 @@ use App\Http\Controllers\Credentials;
 use App\Http\Controllers\DeductionController;
 use App\Http\Controllers\MemberController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\RegionController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\TechnicianController;
 use App\Models\Administrator;
 use App\Models\Collection;
+use App\Models\Credential;
 use App\Models\Payment;
 use App\Models\SuperAdministrator;
 use App\Models\Technician;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -109,7 +112,18 @@ Route::post("admin/dp/update", [AdministratorController::class, "upload_dp"])->m
 
 // deductions
 Route::post("admin/deductions", [DeductionController::class,"getDeductions"])->middleware("authenticate");
+Route::post("admin/deductions/active", [DeductionController::class,"getActiveDeductions"])->middleware("authenticate");
 Route::post("admin/deductions/delete/{deduction_id}", [DeductionController::class, "deleteDeductions"])->middleware("authenticate");
 Route::post("admin/deductions/update", [DeductionController::class, "updateDeductions"])->middleware("authenticate");
 Route::post("admin/deductions/add", [DeductionController::class, "addDeduction"])->middleware("authenticate");
 Route::post("admin/deductions/update_status", [DeductionController::class, "updateDeductionStatus"])->middleware("authenticate");
+
+// regions
+Route::post("admin/regions", [RegionController::class, "getRegions"])->middleware("authenticate");
+Route::post("admin/regions/active", [RegionController::class, "getActiveRegions"])->middleware("authenticate");
+Route::post("admin/region/update", [RegionController::class, "updateRegion"])->middleware("authenticate");
+Route::post("admin/region/delete/{region_id}", [RegionController::class, "deleteRegion"])->middleware("authenticate");
+Route::post("admin/regions/add", [RegionController::class, "addRegion"])->middleware("authenticate");
+Route::post("admin/region/update_status", [RegionController::class, "updateRegionStatus"])->middleware("authenticate");
+
+Route::post("login/resetpassword", [Credentials::class, "resetPassword"]);

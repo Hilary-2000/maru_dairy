@@ -18,6 +18,18 @@ class DeductionController extends Controller
         }
     }
 
+    function getActiveDeductions(){
+        $deductions = DB::select("SELECT * FROM `deduction_type` WHERE `status` = '1' ORDER BY `deduction_name` ASC");
+        if (count($deductions) > 0) {
+            $deductiontype = $deductions;
+            $default = array("deduction_id" => "", "deduction_name" => "Select deduction", "status" => "1");
+            array_unshift($deductions, $default);
+            return response()->json(["success" => true, "deductions" => $deductions, "deductiontype" => $deductiontype], 200);
+        }else{
+            return response()->json(["success" => false, "message" => "No deductions found!"], 200);
+        }
+    }
+
     function deleteDeductions($deduction_id){
         $delete = DB::delete("DELETE FROM `deduction_type` WHERE `deduction_id` = ?", [$deduction_id]);
         return response()->json(["success" => true, "message" => "Deduction has been deleted successfully!"], 200);

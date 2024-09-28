@@ -173,19 +173,19 @@ class AdministratorController extends Controller
 
     // MEMBERS
     function admin_members(){
-        $members = DB::select("SELECT * FROM `members` ORDER BY `fullname` ASC");
+        $members = DB::select("SELECT M.*, R.region_name FROM `members` AS M LEFT JOIN `regions` AS R ON R.region_id = M.region ORDER BY `fullname` ASC");
         return response()->json(["success" => true, "members"=>$members]);
     }
     
     // view profile
     function member_details($member_id){
-        $member_details = Member::find($member_id);
-        if ($member_details) {
-            $collection_days = DB::select("SELECT COUNT(*) AS 'total' FROM `milk_collections` WHERE `member_id` = ?",[$member_details->user_id]);
-            $total_collection = DB::select("SELECT SUM(`collection_amount`) AS 'total' FROM `milk_collections` WHERE `member_id` = ?", [$member_details->user_id]);
+        $member_details = DB::select("SELECT M.*, R.region_name FROM `members` AS M LEFT JOIN `regions` AS R ON R.region_id = M.region WHERE M.user_id = ?", [$member_id]);
+        if (count($member_details) > 0) {
+            $collection_days = DB::select("SELECT COUNT(*) AS 'total' FROM `milk_collections` WHERE `member_id` = ?",[$member_details[0]->user_id]);
+            $total_collection = DB::select("SELECT SUM(`collection_amount`) AS 'total' FROM `milk_collections` WHERE `member_id` = ?", [$member_details[0]->user_id]);
             
             // return value
-            return response()->json(["success" => true, "collection_days" => number_format(count($collection_days) > 0 ? $collection_days[0]->total ?? 0 : 0), "total_collection" => number_format(count($total_collection) > 0 ? $total_collection[0]->total ?? 0 : 0), "member_details" => $member_details]);
+            return response()->json(["success" => true, "collection_days" => number_format(count($collection_days) > 0 ? $collection_days[0]->total ?? 0 : 0), "total_collection" => number_format(count($total_collection) > 0 ? $total_collection[0]->total ?? 0 : 0), "member_details" => $member_details[0]]);
         }else{
             return response()->json(["success" => false, "message" => "Member has been not been found!"]);
         }
