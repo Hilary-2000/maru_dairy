@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdministratorController;
+use App\Http\Controllers\chatController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\Credentials;
 use App\Http\Controllers\DeductionController;
@@ -127,3 +128,6 @@ Route::post("admin/regions/add", [RegionController::class, "addRegion"])->middle
 Route::post("admin/region/update_status", [RegionController::class, "updateRegionStatus"])->middleware("authenticate");
 
 Route::post("login/resetpassword", [Credentials::class, "resetPassword"]);
+
+Route::post("chats/member", [chatController::class, "getMemberMessages"])->middleware("authenticate");
+Route::post("chats/send_message", [chatController::class, "sendMessage"])->middleware("authenticate");
