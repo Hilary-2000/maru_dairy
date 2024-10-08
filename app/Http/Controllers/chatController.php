@@ -6,6 +6,7 @@ use App\Models\chat;
 use App\Models\chat_thread;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use DateTime;
 
 class chatController extends Controller
 {
@@ -22,7 +23,8 @@ class chatController extends Controller
             $today = date("Ymd");
             $segmented_chats = [];
             foreach ($chats as $key => $chat) {
-                $chat->date_sent = date("Ymd", strtotime($chat->date_created)) == $today ? date("H:iA", strtotime($chat->date_created)) : date("D dS M Y @ H:iA", strtotime($chat->date_created));
+                $chat->date_sent = date("H:iA", strtotime($chat->date_created));
+                $chat->selected = false;
                 if(isset($segmented_chats[date("Ymd", strtotime($chat->date_created))])){
                     array_push($segmented_chats[date("Ymd", strtotime($chat->date_created))]['chats'], $chat);
                 }else{
@@ -67,7 +69,7 @@ class chatController extends Controller
             $chat_thread = new chat_thread();
             $chat_thread->chat_id = $one_chat->chat_id;
             $chat_thread->message = $message;
-            $chat_thread->message_status = "sent";
+            $chat_thread->message_status = "received";
             $chat_thread->date_created = date("YmdHis");
             $chat_thread->receiver_id = $user_id;
             $chat_thread->receiver_type = $user_type;
@@ -77,7 +79,7 @@ class chatController extends Controller
             $chat_thread = new chat_thread();
             $chat_thread->chat_id = $chat[0]->chat_id;
             $chat_thread->message = $message;
-            $chat_thread->message_status = "sent";
+            $chat_thread->message_status = "received";
             $chat_thread->date_created = date("YmdHis");
             $chat_thread->receiver_id = $user_id;
             $chat_thread->receiver_type = $user_type;
@@ -86,5 +88,64 @@ class chatController extends Controller
 
         // success
         return response()->json(["success" => true, "message" => "Message sent successfully!"]);
+    }
+
+    function getChats(){
+        $chats = DB::select("SELECT chat.*,
+                            CASE 
+                                WHEN chat.chat_owner_type = '4' THEN M.fullname
+                                WHEN chat.chat_owner_type = '3' THEN SA.fullname
+                                WHEN chat.chat_owner_type = '2' THEN A.fullname
+                                ELSE T.fullname 
+                            END AS fullname,
+                            (SELECT `message` FROM `chat_thread` WHERE `chat_id` = chat.chat_id ORDER BY chat_thread_id DESC LIMIT 1) AS 'last_message',
+                            (SELECT `date_created` FROM `chat_thread` WHERE `chat_id` = chat.chat_id ORDER BY chat_thread_id DESC LIMIT 1) AS 'chat_sent',
+                            (SELECT `message_status` FROM `chat_thread` WHERE `chat_id` = chat.chat_id ORDER BY chat_thread_id DESC LIMIT 1) AS 'message_status'
+                            FROM `chat`
+                            LEFT JOIN members AS M ON chat.chat_owner = M.user_id
+                            LEFT JOIN administrators AS A ON chat.chat_owner = A.user_id
+                            LEFT JOIN super_administrators AS SA ON chat.chat_owner = SA.user_id
+                            LEFT JOIN technicians AS T ON chat.chat_owner = T.user_id
+                            WHERE chat_status = 'active' AND (SELECT `message` FROM `chat_thread` WHERE `chat_id` = chat.chat_id ORDER BY chat_thread_id DESC LIMIT 1) != 'NULL'
+                            ORDER BY chat_sent DESC;");
+        foreach($chats as $key => $chat){
+            $difference = $this->getDateDifference($chat->chat_sent, date("YmdHis"));
+            $chats[$key]->chat_sent = $difference['minutes'] < 60 ? number_format($difference['minutes'])."mins ago" : ($difference['days'] < 1 ? date("h:iA", strtotime($chat->chat_sent)) : ($difference['days'] < 7 ? date("D", strtotime($chat->chat_sent)) : date("dS-M", strtotime($chat->chat_sent))));
+        }
+
+        // success
+        return response()->json(["success" => true, "chats" => $chats]);
+    }
+    function getDateDifference($date1, $date2) {
+        // Create DateTime objects from the date strings
+        $datetime1 = new DateTime($date1);
+        $datetime2 = new DateTime($date2);
+        
+        // Calculate the difference
+        $interval = $datetime1->diff($datetime2);
+    
+        // Get the difference in days, weeks, and months
+        $days = $interval->days; // Total days
+        $months = $interval->m + ($interval->y * 12); // Total months
+        $weeks = floor($days / 7); // Approximate weeks
+        $totalMinutes = abs(strtotime($date2) - strtotime($date1)) / 60;
+    
+        // Format the result
+        return [
+            'days' => $days,
+            'weeks' => $weeks,
+            'months' => $months,
+            'minutes' => $totalMinutes
+        ];
+    }
+
+    function deleteChats(Request $request){
+        // chat thread ids
+        $chat_thread_ids = $request->input("chat_thread_ids");
+        $chat_thread = join(",", $chat_thread_ids);
+
+        $delete_threads = DB::delete("DELETE FROM `chat_thread` WHERE `chat_thread_id` IN ($chat_thread)");
+
+        return response()->json(["success" => true, "message" => "Chats deleted successfully!"]);
     }
 }

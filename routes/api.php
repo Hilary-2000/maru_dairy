@@ -131,3 +131,5 @@ Route::post("login/resetpassword", [Credentials::class, "resetPassword"]);
 
 Route::post("chats/member", [chatController::class, "getMemberMessages"])->middleware("authenticate");
 Route::post("chats/send_message", [chatController::class, "sendMessage"])->middleware("authenticate");
+Route::post("chats/get_chats", [chatController::class, "getChats"])->middleware("authenticate");
+Route::post("chats/delete_chats", [chatController::class, "deleteChats"])->middleware("authenticate");
