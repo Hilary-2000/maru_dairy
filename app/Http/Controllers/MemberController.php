@@ -72,6 +72,8 @@ class MemberController extends Controller
         foreach ($members as $key => $value) {
             $collection = DB::select("SELECT * FROM `milk_collections` WHERE `member_id` = '".$value->user_id."' AND `collection_date` LIKE '".date("Ymd")."%'");
             $members[$key]->collected_today = count($collection) > 0;
+            $regions = DB::select("SELECT regions.region_name FROM `regions` WHERE `region_id` = ?", [$value->region]);
+            $members[$key]->region = count($regions) > 0 ? $regions[0]->region_name : $value->region;
         }
         return response()->json(["success" => true, "data" => $members]);
     }

@@ -12,6 +12,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 
+date_default_timezone_set('Africa/Nairobi');
+
 class AdministratorController extends Controller
 {
     //GET THE ADMINISTRATOR ADMIN
