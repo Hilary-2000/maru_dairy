@@ -303,96 +303,19 @@ class TechnicianController extends Controller
         $technician_id = $request->input("technician_id");
         $start_date = $request->input("start_date") . "000000";
         $end_date = $request->input("end_date") . "235959";
+        $region = $request->input("region");
 
         // collection
+        $collection = [];
+        $title = "";
         if ($report_type == "ALL") {
+            $str = $region == "0" ? "" : " AND M.region = '$region'";
             $collection = DB::select("SELECT MC.*, M.fullname AS member_fullname, M.membership FROM `milk_collections` AS MC
                             LEFT JOIN members AS M 
                             ON MC.member_id = M.user_id 
-                            WHERE `technician_id` = '" . $technician_id . "' AND `user_type` = '1' AND `collection_date` BETWEEN '" . $start_date . "' AND '" . $end_date . "' 
+                            WHERE `technician_id` = '" . $technician_id . "' $str AND `user_type` = '1' AND `collection_date` BETWEEN '" . $start_date . "' AND '" . $end_date . "' 
                             ORDER BY `collection_id` DESC");
-
-
-            // group_collection
-            $group_collection = [];
-            $total_cost = 0;
-            $total_litres = 0;
-            if (count($collection) > 0) {
-                foreach ($collection as $key => $value) {
-                    $collection_date = date("Ymd", strtotime($value->collection_date)) . "235959";
-                    $collection_amount = $value->collection_amount;
-
-                    // get the milk price
-                    $select = DB::select("SELECT * FROM `milk_prices` WHERE `effect_date` < '" . $collection_date . "' AND `status` = '1' ORDER BY `price_id` DESC LIMIT 1");
-                    $price = (count($select) > 0 ? $select[0]->amount : 0) * $collection_amount;
-                    $total_cost += $price;
-                    $total_litres += $collection_amount;
-                    $value->price = number_format($price, 2);
-
-                    if (isset($group_collection[substr($value->collection_date, 0, 8)])) {
-                        array_push($group_collection[substr($value->collection_date, 0, 8)]['collection'], $value);
-                    } else {
-                        $group_collection[substr($value->collection_date, 0, 8)] = array(
-                            "date" => substr($value->collection_date, 0, 8),
-                            "fulldate" => date("D dS M Y", strtotime(substr($value->collection_date, 0, 8))),
-                            "collection" => [$value]
-                        );
-                    }
-                }
-            }
-
-            $pdf = new PDF("P", "mm", "A4");
-            $pdf->set_document_title("Your Collections between " . date("D dS M Y", strtotime($start_date)) . " to " . date("D dS M Y", strtotime($end_date)));
-            $pdf->AddPage();
-            $pdf->SetFont('Times', 'B', 10);
-            $pdf->SetMargins(10, 5);
-            $pdf->AddFont("robotomonoa", '', 'RobotoMono-Regular.php');
-            $pdf->AddFont("robotomonob", '', 'RobotoMono-Bold.php');
-            $pdf->Ln();
-            $pdf->SetFont('robotomonob', '', 10);
-            $pdf->Cell(40, 10, "Total Payment:", 1, 0);
-            $pdf->SetFont('robotomonoa', '', 10);
-            $pdf->Cell(40, 10, "Kes " . number_format($total_cost, 2), 1, 1);
-
-            $pdf->SetFont('robotomonob', '', 10);
-            $pdf->Cell(40, 10, "Litres Collected:", 1, 0);
-            $pdf->SetFont('robotomonoa', '', 10);
-            $pdf->Cell(40, 10, number_format($total_litres, 2) . " Litres", 1, 1);
-            $pdf->Ln();
-            foreach ($group_collection as $key => $value) {
-                $pdf->SetFont('robotomonob', 'U', 10);
-                $pdf->Cell(200, 10, "Collections for : " . date("D dS M Y", strtotime($key)), 0, 1, "C");
-
-                // table header
-                $pdf->SetFont('robotomonob', '', 10);
-                $pdf->Cell(15, 10, "#", 1, 0, "C");
-                $pdf->Cell(20, 10, "Litres", 1, 0, "C");
-                $pdf->Cell(35, 10, "Price", 1, 0, "C");
-                $pdf->Cell(25, 10, "Time.", 1, 0, "C");
-                $pdf->Cell(50, 10, "Member", 1, 0, "C");
-                $pdf->Cell(40, 10, "Membeship No.", 1, 1, "C");
-                $pdf->SetFont('robotomonoa', '', 10);
-                $total_litres = 0;
-                $total_collection = 0;
-                foreach ($value['collection'] as $keyed => $valued) {
-                    $pdf->Cell(15, 6, ($keyed + 1) . ".", 1, 0, "L");
-                    $pdf->Cell(20, 6, $valued->collection_amount, 1, 0, "L");
-                    $pdf->Cell(35, 6, "Kes " . $valued->price, 1, 0, "L");
-                    $pdf->Cell(25, 6, date("H:i:sA", strtotime($valued->collection_date)), 1, 0, "L");
-                    $pdf->Cell(50, 6, ucwords(strtolower($valued->member_fullname)), 1, 0, "L");
-                    $pdf->Cell(40, 6, $valued->membership, 1, 1, "L");
-
-                    // total litres
-                    $total_litres += (str_replace(",", "", $valued->collection_amount) * 1);
-                    $total_collection += (str_replace(",", "", $valued->price) * 1);
-                }
-                $pdf->SetFont('robotomonob', '', 10);
-                $pdf->Cell(15, 6, "Total", 1, 0, "L");
-                $pdf->Cell(20, 6, $total_litres, 1, 0, "L");
-                $pdf->Cell(35, 6, "Kes " . number_format($total_collection), 1, 0, "L");
-                $pdf->Ln(10);
-            }
-            $pdf->Output();
+            $title = "Your Collections between " . date("D dS M Y", strtotime($start_date)) . " to " . date("D dS M Y", strtotime($end_date));
         } elseif ($report_type == "accepted") {
             $collection = DB::select("SELECT MC.*, M.fullname AS member_fullname, M.membership FROM `milk_collections` AS MC
                             LEFT JOIN members AS M 
@@ -401,86 +324,8 @@ class TechnicianController extends Controller
                             ORDER BY `collection_id` DESC");
 
 
-            // group_collection
-            $group_collection = [];
-            $total_cost = 0;
-            $total_litres = 0;
-            if (count($collection) > 0) {
-                foreach ($collection as $key => $value) {
-                    $collection_date = date("Ymd", strtotime($value->collection_date)) . "235959";
-                    $collection_amount = $value->collection_amount;
-
-                    // get the milk price
-                    $select = DB::select("SELECT * FROM `milk_prices` WHERE `effect_date` < '" . $collection_date . "' AND `status` = '1' ORDER BY `price_id` DESC LIMIT 1");
-                    $price = (count($select) > 0 ? $select[0]->amount : 0) * $collection_amount;
-                    $total_cost += $price;
-                    $total_litres += $collection_amount;
-                    $value->price = number_format($price, 2);
-
-                    if (isset($group_collection[substr($value->collection_date, 0, 8)])) {
-                        array_push($group_collection[substr($value->collection_date, 0, 8)]['collection'], $value);
-                    } else {
-                        $group_collection[substr($value->collection_date, 0, 8)] = array(
-                            "date" => substr($value->collection_date, 0, 8),
-                            "fulldate" => date("D dS M Y", strtotime(substr($value->collection_date, 0, 8))),
-                            "collection" => [$value]
-                        );
-                    }
-                }
-            }
-
-            $pdf = new PDF("P", "mm", "A4");
-            $pdf->set_document_title("Your Accepted Collections between " . date("D dS M Y", strtotime($start_date)) . " to " . date("D dS M Y", strtotime($end_date)));
-            $pdf->AddPage();
-            $pdf->SetFont('Times', 'B', 10);
-            $pdf->SetMargins(10, 5);
-            $pdf->AddFont("robotomonoa", '', 'RobotoMono-Regular.php');
-            $pdf->AddFont("robotomonob", '', 'RobotoMono-Bold.php');
-            $pdf->Ln();
-            $pdf->SetFont('robotomonob', '', 10);
-            $pdf->Cell(40, 10, "Total Payment:", 1, 0);
-            $pdf->SetFont('robotomonoa', '', 10);
-            $pdf->Cell(40, 10, "Kes " . number_format($total_cost, 2), 1, 1);
-
-            $pdf->SetFont('robotomonob', '', 10);
-            $pdf->Cell(40, 10, "Litres Collected:", 1, 0);
-            $pdf->SetFont('robotomonoa', '', 10);
-            $pdf->Cell(40, 10, number_format($total_litres, 2) . " Litres", 1, 1);
-            $pdf->Ln();
-            foreach ($group_collection as $key => $value) {
-                $pdf->SetFont('robotomonob', 'U', 10);
-                $pdf->Cell(200, 10, "Collections for : " . date("D dS M Y", strtotime($key)), 0, 1, "C");
-
-                // table header
-                $pdf->SetFont('robotomonob', '', 10);
-                $pdf->Cell(15, 10, "#", 1, 0, "C");
-                $pdf->Cell(20, 10, "Litres", 1, 0, "C");
-                $pdf->Cell(35, 10, "Price", 1, 0, "C");
-                $pdf->Cell(25, 10, "Time.", 1, 0, "C");
-                $pdf->Cell(50, 10, "Member", 1, 0, "C");
-                $pdf->Cell(40, 10, "Membeship No.", 1, 1, "C");
-                $pdf->SetFont('robotomonoa', '', 10);
-                $total_litres = 0;
-                $total_collection = 0;
-                foreach ($value['collection'] as $keyed => $valued) {
-                    $pdf->Cell(15, 6, ($keyed + 1) . ".", 1, 0, "L");
-                    $pdf->Cell(20, 6, $valued->collection_amount, 1, 0, "L");
-                    $pdf->Cell(35, 6, "Kes " . $valued->price, 1, 0, "L");
-                    $pdf->Cell(25, 6, date("H:i:sA", strtotime($valued->collection_date)), 1, 0, "L");
-                    $pdf->Cell(50, 6, ucwords(strtolower($valued->member_fullname)), 1, 0, "L");
-                    $pdf->Cell(40, 6, $valued->membership, 1, 1, "L");
-
-                    // total litres
-                    $total_litres += (str_replace(",", "", $valued->collection_amount) * 1);
-                    $total_collection += (str_replace(",", "", $valued->price) * 1);
-                }
-                $pdf->SetFont('robotomonob', '', 10);
-                $pdf->Cell(15, 6, "Total", 1, 0, "L");
-                $pdf->Cell(20, 6, $total_litres, 1, 0, "L");
-                $pdf->Cell(35, 6, "Kes " . number_format($total_collection), 1, 0, "L");
-                $pdf->Ln(10);
-            }
-            $pdf->Output();
+            $title = "Your Accepted Collections between " . date("D dS M Y", strtotime($start_date)) . " to " . date("D dS M Y", strtotime($end_date));
+            
         } elseif ($report_type == "declined") {
             $collection = DB::select("SELECT MC.*, M.fullname AS member_fullname, M.membership FROM `milk_collections` AS MC
                             LEFT JOIN members AS M 
@@ -489,86 +334,7 @@ class TechnicianController extends Controller
                             ORDER BY `collection_id` DESC");
 
 
-            // group_collection
-            $group_collection = [];
-            $total_cost = 0;
-            $total_litres = 0;
-            if (count($collection) > 0) {
-                foreach ($collection as $key => $value) {
-                    $collection_date = date("Ymd", strtotime($value->collection_date)) . "235959";
-                    $collection_amount = $value->collection_amount;
-
-                    // get the milk price
-                    $select = DB::select("SELECT * FROM `milk_prices` WHERE `effect_date` < '" . $collection_date . "' AND `status` = '1' ORDER BY `price_id` DESC LIMIT 1");
-                    $price = (count($select) > 0 ? $select[0]->amount : 0) * $collection_amount;
-                    $total_cost += $price;
-                    $total_litres += $collection_amount;
-                    $value->price = number_format($price, 2);
-
-                    if (isset($group_collection[substr($value->collection_date, 0, 8)])) {
-                        array_push($group_collection[substr($value->collection_date, 0, 8)]['collection'], $value);
-                    } else {
-                        $group_collection[substr($value->collection_date, 0, 8)] = array(
-                            "date" => substr($value->collection_date, 0, 8),
-                            "fulldate" => date("D dS M Y", strtotime(substr($value->collection_date, 0, 8))),
-                            "collection" => [$value]
-                        );
-                    }
-                }
-            }
-
-            $pdf = new PDF("P", "mm", "A4");
-            $pdf->set_document_title("Your Declined Collections between " . date("D dS M Y", strtotime($start_date)) . " to " . date("D dS M Y", strtotime($end_date)));
-            $pdf->AddPage();
-            $pdf->SetFont('Times', 'B', 10);
-            $pdf->SetMargins(10, 5);
-            $pdf->AddFont("robotomonoa", '', 'RobotoMono-Regular.php');
-            $pdf->AddFont("robotomonob", '', 'RobotoMono-Bold.php');
-            $pdf->Ln();
-            $pdf->SetFont('robotomonob', '', 10);
-            $pdf->Cell(40, 10, "Total Payment:", 1, 0);
-            $pdf->SetFont('robotomonoa', '', 10);
-            $pdf->Cell(40, 10, "Kes " . number_format($total_cost, 2), 1, 1);
-
-            $pdf->SetFont('robotomonob', '', 10);
-            $pdf->Cell(40, 10, "Litres Collected:", 1, 0);
-            $pdf->SetFont('robotomonoa', '', 10);
-            $pdf->Cell(40, 10, number_format($total_litres, 2) . " Litres", 1, 1);
-            $pdf->Ln();
-            foreach ($group_collection as $key => $value) {
-                $pdf->SetFont('robotomonob', 'U', 10);
-                $pdf->Cell(200, 10, "Collections for : " . date("D dS M Y", strtotime($key)), 0, 1, "C");
-
-                // table header
-                $pdf->SetFont('robotomonob', '', 10);
-                $pdf->Cell(15, 10, "#", 1, 0, "C");
-                $pdf->Cell(20, 10, "Litres", 1, 0, "C");
-                $pdf->Cell(35, 10, "Price", 1, 0, "C");
-                $pdf->Cell(25, 10, "Time.", 1, 0, "C");
-                $pdf->Cell(50, 10, "Member", 1, 0, "C");
-                $pdf->Cell(40, 10, "Membeship No.", 1, 1, "C");
-                $pdf->SetFont('robotomonoa', '', 10);
-                $total_litres = 0;
-                $total_collection = 0;
-                foreach ($value['collection'] as $keyed => $valued) {
-                    $pdf->Cell(15, 6, ($keyed + 1) . ".", 1, 0, "L");
-                    $pdf->Cell(20, 6, $valued->collection_amount, 1, 0, "L");
-                    $pdf->Cell(35, 6, "Kes " . $valued->price, 1, 0, "L");
-                    $pdf->Cell(25, 6, date("H:i:sA", strtotime($valued->collection_date)), 1, 0, "L");
-                    $pdf->Cell(50, 6, ucwords(strtolower($valued->member_fullname)), 1, 0, "L");
-                    $pdf->Cell(40, 6, $valued->membership, 1, 1, "L");
-
-                    // total litres
-                    $total_litres += (str_replace(",", "", $valued->collection_amount) * 1);
-                    $total_collection += (str_replace(",", "", $valued->price) * 1);
-                }
-                $pdf->SetFont('robotomonob', '', 10);
-                $pdf->Cell(15, 6, "Total", 1, 0, "L");
-                $pdf->Cell(20, 6, $total_litres, 1, 0, "L");
-                $pdf->Cell(35, 6, "Kes " . number_format($total_collection), 1, 0, "L");
-                $pdf->Ln(10);
-            }
-            $pdf->Output();
+            $title = "Your Declined Collections between " . date("D dS M Y", strtotime($start_date)) . " to " . date("D dS M Y", strtotime($end_date));
         } elseif ($report_type == "not_confirmed") {
             $collection = DB::select("SELECT MC.*, M.fullname AS member_fullname, M.membership FROM `milk_collections` AS MC
                             LEFT JOIN members AS M 
@@ -576,87 +342,7 @@ class TechnicianController extends Controller
                             WHERE `collection_status` = '0' AND `technician_id` = '" . $technician_id . "' AND `user_type` = '1' AND `collection_date` BETWEEN '" . $start_date . "' AND '" . $end_date . "' 
                             ORDER BY `collection_id` DESC");
 
-
-            // group_collection
-            $group_collection = [];
-            $total_cost = 0;
-            $total_litres = 0;
-            if (count($collection) > 0) {
-                foreach ($collection as $key => $value) {
-                    $collection_date = date("Ymd", strtotime($value->collection_date)) . "235959";
-                    $collection_amount = $value->collection_amount;
-
-                    // get the milk price
-                    $select = DB::select("SELECT * FROM `milk_prices` WHERE `effect_date` < '" . $collection_date . "' AND `status` = '1' ORDER BY `price_id` DESC LIMIT 1");
-                    $price = (count($select) > 0 ? $select[0]->amount : 0) * $collection_amount;
-                    $total_cost += $price;
-                    $total_litres += $collection_amount;
-                    $value->price = number_format($price, 2);
-
-                    if (isset($group_collection[substr($value->collection_date, 0, 8)])) {
-                        array_push($group_collection[substr($value->collection_date, 0, 8)]['collection'], $value);
-                    } else {
-                        $group_collection[substr($value->collection_date, 0, 8)] = array(
-                            "date" => substr($value->collection_date, 0, 8),
-                            "fulldate" => date("D dS M Y", strtotime(substr($value->collection_date, 0, 8))),
-                            "collection" => [$value]
-                        );
-                    }
-                }
-            }
-
-            $pdf = new PDF("P", "mm", "A4");
-            $pdf->set_document_title("Your Pending Confirmation Collections between " . date("D dS M Y", strtotime($start_date)) . " to " . date("D dS M Y", strtotime($end_date)));
-            $pdf->AddPage();
-            $pdf->SetFont('Times', 'B', 10);
-            $pdf->SetMargins(10, 5);
-            $pdf->AddFont("robotomonoa", '', 'RobotoMono-Regular.php');
-            $pdf->AddFont("robotomonob", '', 'RobotoMono-Bold.php');
-            $pdf->Ln();
-            $pdf->SetFont('robotomonob', '', 10);
-            $pdf->Cell(40, 10, "Total Payment:", 1, 0);
-            $pdf->SetFont('robotomonoa', '', 10);
-            $pdf->Cell(40, 10, "Kes " . number_format($total_cost, 2), 1, 1);
-
-            $pdf->SetFont('robotomonob', '', 10);
-            $pdf->Cell(40, 10, "Litres Collected:", 1, 0);
-            $pdf->SetFont('robotomonoa', '', 10);
-            $pdf->Cell(40, 10, number_format($total_litres, 2) . " Litres", 1, 1);
-            $pdf->Ln();
-            foreach ($group_collection as $key => $value) {
-                $pdf->SetFont('robotomonob', 'U', 10);
-                $pdf->Cell(200, 10, "Collections for : " . date("D dS M Y", strtotime($key)), 0, 1, "C");
-
-                // table header
-                $pdf->SetFont('robotomonob', '', 10);
-                $pdf->Cell(15, 10, "#", 1, 0, "C");
-                $pdf->Cell(20, 10, "Litres", 1, 0, "C");
-                $pdf->Cell(35, 10, "Price", 1, 0, "C");
-                $pdf->Cell(25, 10, "Time.", 1, 0, "C");
-                $pdf->Cell(50, 10, "Member", 1, 0, "C");
-                $pdf->Cell(40, 10, "Membeship No.", 1, 1, "C");
-                $pdf->SetFont('robotomonoa', '', 10);
-                $total_litres = 0;
-                $total_collection = 0;
-                foreach ($value['collection'] as $keyed => $valued) {
-                    $pdf->Cell(15, 6, ($keyed + 1) . ".", 1, 0, "L");
-                    $pdf->Cell(20, 6, $valued->collection_amount, 1, 0, "L");
-                    $pdf->Cell(35, 6, "Kes " . $valued->price, 1, 0, "L");
-                    $pdf->Cell(25, 6, date("H:i:sA", strtotime($valued->collection_date)), 1, 0, "L");
-                    $pdf->Cell(50, 6, ucwords(strtolower($valued->member_fullname)), 1, 0, "L");
-                    $pdf->Cell(40, 6, $valued->membership, 1, 1, "L");
-
-                    // total litres
-                    $total_litres += (str_replace(",", "", $valued->collection_amount) * 1);
-                    $total_collection += (str_replace(",", "", $valued->price) * 1);
-                }
-                $pdf->SetFont('robotomonob', '', 10);
-                $pdf->Cell(15, 6, "Total", 1, 0, "L");
-                $pdf->Cell(20, 6, $total_litres, 1, 0, "L");
-                $pdf->Cell(35, 6, "Kes " . number_format($total_collection), 1, 0, "L");
-                $pdf->Ln(10);
-            }
-            $pdf->Output();
+            $title = "Your Pending Confirmation Collections between " . date("D dS M Y", strtotime($start_date)) . " to " . date("D dS M Y", strtotime($end_date));
         } else {
             $pdf = new PDF("P", "mm", "A4");
             $pdf->set_document_title("Collection between " . date("D dS M Y", strtotime($start_date)) . " to " . date("D dS M Y", strtotime($end_date)));
@@ -669,7 +355,83 @@ class TechnicianController extends Controller
             $pdf->Cell(190, 10, "No options selected", 1, 0, "C");
             $pdf->SetFont('robotomonoa', "", 10);
             $pdf->Output();
+            return;
         }
+
+        // region name
+        $region_data = DB::select("SELECT * FROM regions WHERE region_id = ?", [$region]);
+        $region_name = $region == "0" ? "All regions" : (count($region_data) > 0 ? $region_data[0]->region_name ?? "NA" : "NA");
+            
+        // group_collection
+        $group_collection = [];
+        $total_cost = 0;
+        $total_litres = 0;
+        if (count($collection) > 0) {
+            foreach ($collection as $key => $value) {
+                $collection_date = date("Ymd", strtotime($value->collection_date)) . "235959";
+                $collection_amount = $value->collection_amount;
+
+                // get the milk price
+                $select = DB::select("SELECT * FROM `milk_prices` WHERE `effect_date` < '" . $collection_date . "' AND `status` = '1' ORDER BY `price_id` DESC LIMIT 1");
+                $price = (count($select) > 0 ? $select[0]->amount : 0) * $collection_amount;
+                $total_cost += $price;
+                $total_litres += $collection_amount;
+                $value->price = $price;
+                $value->collection_date = date("D dS M Y - H:iA", strtotime($value->collection_date));
+                array_push($group_collection, $value);
+            }
+        }
+
+        // title
+        $title .= " ($region_name)";
+
+        $pdf = new PDF("P", "mm", "A4");
+        $pdf->set_document_title($title);
+        $pdf->AddPage();
+        $pdf->SetFont('Times', 'B', 10);
+        $pdf->SetMargins(10, 5);
+        $pdf->AddFont("robotomonoa", '', 'RobotoMono-Regular.php');
+        $pdf->AddFont("robotomonob", '', 'RobotoMono-Bold.php');
+        $pdf->Ln();
+        $pdf->SetFont('robotomonob', '', 10);
+        $pdf->Cell(40, 10, "Total Payment:", 1, 0);
+        $pdf->SetFont('robotomonoa', '', 10);
+        $pdf->Cell(40, 10, "Kes " . number_format($total_cost, 2), 1, 1);
+
+        $pdf->SetFont('robotomonob', '', 10);
+        $pdf->Cell(40, 10, "Litres Collected:", 1, 0);
+        $pdf->SetFont('robotomonoa', '', 10);
+        $pdf->Cell(40, 10, number_format($total_litres, 2) . " Litres", 1, 1);
+        $pdf->Ln();
+        
+        // table header
+        $pdf->SetFont('robotomonob', '', 9);
+        $pdf->Cell(10,8, "#", 1, 0, "C");
+        $pdf->Cell(25,8, "Litres", 1, 0, "C");
+        $pdf->Cell(25,8, "Price", 1, 0, "C");
+        $pdf->Cell(55,8, "Date", 1, 0, "C");
+        $pdf->Cell(40,8, "Member", 1, 0, "C");
+        $pdf->Cell(30,8, "Membeship No.", 1, 1, "L");
+        $pdf->SetFont('robotomonoa', '', 9);
+
+        // total litres
+        $total_litres = 0;
+        $total_collection = 0;
+        foreach ($group_collection as $key => $value) {
+            $pdf->Cell(10,8, ($key+1).".", 1, 0, "L");
+            $pdf->Cell(25,8, $value->collection_amount." Ltrs", 1, 0, "C");
+            $pdf->Cell(25,8, "Kes ".number_format($value->price, 2), 1, 0, "L");
+            $pdf->Cell(55,8, $value->collection_date, 1, 0, "C");
+            $pdf->Cell(40,8, ucwords(strtolower($value->member_fullname)), 1, 0, "L");
+            $pdf->Cell(30,8, $value->membership, 1, 1, "L");
+            $total_collection+= $value->price;
+            $total_litres+= $value->collection_amount;
+        }
+        $pdf->SetFont('robotomonob', '', 8);
+        $pdf->Cell(10,6, "Total", 1, 0, "L");
+        $pdf->Cell(25,6, $total_litres." Ltrs", 1, 0, "L");
+        $pdf->Cell(25,6, "Kes ".number_format($total_collection), 1, 0, "L");
+        $pdf->Output();
     }
     function upload_dp(Request $req)
     {
