@@ -13,12 +13,14 @@ class ReportController extends Controller
         $report_type = $request->input("report_type");
         $start_date = $request->input("start_date")."000000";
         $end_date = $request->input("end_date")."235959";
+        $region = $request->input("region");
 
         if($report_type == "collections"){
+            $str = $region == "0" ? "" : " AND M.region = '$region'";
             $collection = DB::select("SELECT MC.*, M.fullname AS member_fullname, M.membership FROM `milk_collections` AS MC
                             LEFT JOIN members AS M 
                             ON MC.member_id = M.user_id 
-                            WHERE `collection_date` BETWEEN '".$start_date."' AND '".$end_date."' 
+                            WHERE `collection_date` BETWEEN '".$start_date."' AND '".$end_date."' $str
                             ORDER BY `collection_id` DESC");
             
 
@@ -28,6 +30,7 @@ class ReportController extends Controller
             $total_litres = 0;
             if (count($collection) > 0) {
                 foreach ($collection as $key => $value) {
+                    // return $value;
                     $collection_date = date("Ymd", strtotime($value->collection_date))."235959";
                     $collection_amount = $value->collection_amount;
                     
@@ -36,22 +39,18 @@ class ReportController extends Controller
                     $price = (count($select) > 0 ? $select[0]->amount : 0) * $collection_amount;
                     $total_cost += $price;
                     $total_litres += $collection_amount;
-                    $value->price = number_format($price, 2);
-                    
-                    if (isset($group_collection[substr($value->collection_date,0,8)])) {
-                        array_push($group_collection[substr($value->collection_date,0,8)]['collection'], $value);
-                    }else{
-                        $group_collection[substr($value->collection_date,0,8)] = array(
-                            "date" => substr($value->collection_date,0,8),
-                            "fulldate" => date("D dS M Y", strtotime(substr($value->collection_date,0,8))),
-                            "collection" => [$value]
-                        );
-                    }
+                    $value->price = $price;
+                    $value->collection_date = date("D dS M Y - H:iA", strtotime($value->collection_date));
+                    array_push($group_collection, $value);
                 }
             }
+
+            // region name
+            $region_data = DB::select("SELECT * FROM regions WHERE region_id = ?", [$region]);
+            $region_name = $region == "0" ? "All regions" : (count($region_data) > 0 ? $region_data[0]->region_name ?? "NA" : "NA");
             
             $pdf = new PDF("P","mm","A4");
-            $pdf->set_document_title("Collection between ".date("D dS M Y", strtotime($start_date))." to ".date("D dS M Y", strtotime($end_date)));
+            $pdf->set_document_title("Collection between ".date("D dS M Y", strtotime($start_date))." to ".date("D dS M Y", strtotime($end_date))." ($region_name)");
             $pdf->AddPage();
             $pdf->SetFont('Times', 'B', 10);
             $pdf->SetMargins(10, 5);
@@ -68,46 +67,42 @@ class ReportController extends Controller
             $pdf->SetFont('robotomonoa', '', 10);
             $pdf->Cell(40, 10, number_format($total_litres, 2)." Litres", 1, 1);
             $pdf->Ln();
+            // return $group_collection;
+            
+            // table header
+            $pdf->SetFont('robotomonob', '', 9);
+            $pdf->Cell(10,8, "#", 1, 0, "C");
+            $pdf->Cell(25,8, "Litres", 1, 0, "C");
+            $pdf->Cell(25,8, "Price", 1, 0, "C");
+            $pdf->Cell(55,8, "Date", 1, 0, "C");
+            $pdf->Cell(40,8, "Member", 1, 0, "C");
+            $pdf->Cell(30,8, "Membeship No.", 1, 1, "L");
+            $pdf->SetFont('robotomonoa', '', 9);
+            $total_litres = 0;
+            $total_collection = 0;
             foreach ($group_collection as $key => $value) {
-                $pdf->SetFont('robotomonob', 'U', 10);
-                $pdf->Cell(200,10,"Collections for : ".date("D dS M Y", strtotime($key)),0,1, "C");
-
-                // table header
-                $pdf->SetFont('robotomonob', '', 10);
-                $pdf->Cell(15,10, "#", 1, 0, "C");
-                $pdf->Cell(20,10, "Litres", 1, 0, "C");
-                $pdf->Cell(35,10, "Price", 1, 0, "C");
-                $pdf->Cell(25,10, "Time.", 1, 0, "C");
-                $pdf->Cell(50,10, "Member", 1, 0, "C");
-                $pdf->Cell(40,10, "Membeship No.", 1, 1, "C");
-                $pdf->SetFont('robotomonoa', '', 10);
-                $total_litres = 0;
-                $total_collection = 0;
-                foreach ($value['collection'] as $keyed => $valued) {
-                    $pdf->Cell(15,6, ($keyed + 1).".", 1, 0, "L");
-                    $pdf->Cell(20,6, $valued->collection_amount, 1, 0, "L");
-                    $pdf->Cell(35,6, "Kes ".$valued->price, 1, 0, "L");
-                    $pdf->Cell(25,6, date("H:i:sA", strtotime($valued->collection_date)), 1, 0, "L");
-                    $pdf->Cell(50,6, ucwords(strtolower($valued->member_fullname)), 1, 0, "L");
-                    $pdf->Cell(40,6, $valued->membership, 1, 1, "L");
-
-                    // total litres
-                    $total_litres += (str_replace(",","",$valued->collection_amount)*1);
-                    $total_collection += (str_replace(",","",$valued->price)*1);
-                }
-                $pdf->SetFont('robotomonob', '', 10);
-                $pdf->Cell(15,6, "Total", 1, 0, "L");
-                $pdf->Cell(20,6, $total_litres, 1, 0, "L");
-                $pdf->Cell(35,6, "Kes ".number_format($total_collection), 1, 0, "L");
-                $pdf->Ln(10);
+                $pdf->Cell(10,8, ($key+1).".", 1, 0, "L");
+                $pdf->Cell(25,8, $value->collection_amount." Ltrs", 1, 0, "C");
+                $pdf->Cell(25,8, "Kes ".number_format($value->price, 2), 1, 0, "L");
+                $pdf->Cell(55,8, $value->collection_date, 1, 0, "C");
+                $pdf->Cell(40,8, ucwords(strtolower($value->member_fullname)), 1, 0, "L");
+                $pdf->Cell(30,8, $value->membership, 1, 1, "L");
+                $total_collection+= $value->price;
+                $total_litres+= $value->collection_amount;
             }
+            $pdf->SetFont('robotomonob', '', 8);
+            $pdf->Cell(10,6, "Total", 1, 0, "L");
+            $pdf->Cell(25,6, $total_litres." Ltrs", 1, 0, "R");
+            $pdf->Cell(25,6, "Kes ".number_format($total_collection), 1, 0, "L");
+            $pdf->Ln(10);
             $pdf->Output();
         }elseif ($report_type == "payments") {
-            $members = DB::select("SELECT * FROM `members` ORDER BY `user_id` DESC");
+            $str = $region == "0" ? "" : "WHERE region = '$region'";
+            $members = DB::select("SELECT * FROM `members` $str ORDER BY `user_id` DESC");
             $total_cost = 0;
             $total_litres = 0;
             foreach ($members as $key => $member) {
-                $collection = DB::select("SELECT * FROM `milk_collections` WHERE `member_id` = ? AND `collection_date` BETWEEN ? AND ?", [$member->user_id, $start_date, $end_date]);
+                $collection = DB::select("SELECT * FROM `milk_collections` WHERE member_id = ? AND `collection_date` BETWEEN ? AND ?", [$member->user_id, $start_date, $end_date]);
                 $price_collection = $this->getTotalPrice($collection);
                 $total_cost += $price_collection[0];
                 $total_litres += $price_collection[1];
@@ -119,7 +114,12 @@ class ReportController extends Controller
             // get members
             
             $pdf = new PDF("P","mm","A4");
-            $pdf->set_document_title("Collection between ".date("D dS M Y", strtotime($start_date))." to ".date("D dS M Y", strtotime($end_date)));
+
+            // region name
+            $region_data = DB::select("SELECT * FROM regions WHERE region_id = ?", [$region]);
+            $region_name = $region == "0" ? "All regions" : (count($region_data) > 0 ? $region_data[0]->region_name ?? "NA" : "NA");
+
+            $pdf->set_document_title("Collection between ".date("D dS M Y", strtotime($start_date))." to ".date("D dS M Y", strtotime($end_date))." - ($region_name)");
             $pdf->AddPage();
             $pdf->SetFont('Times', 'B', 10);
             $pdf->SetMargins(10, 5);
@@ -163,10 +163,15 @@ class ReportController extends Controller
             $pdf->Cell(30,7, "Kes ".number_format($total_cost, 2), 1, 1, "L");
             $pdf->Output();
         }elseif ($report_type == "members") {
-            $get_members = DB::select("SELECT * FROM `members` ORDER BY `user_id` DESC");
+            $str = $region == "0" ? "" : "WHERE region = '$region'";
+            $get_members = DB::select("SELECT members.*, regions.region_name FROM members LEFT JOIN regions ON members.region = regions.region_id $str ORDER BY `user_id` DESC");
+
+            // region name
+            $region_data = DB::select("SELECT * FROM regions WHERE region_id = ?", [$region]);
+            $region_name = $region == "0" ? "All regions" : (count($region_data) > 0 ? $region_data[0]->region_name ?? "NA" : "NA");
             
             $pdf = new PDF("P","mm","A4");
-            $pdf->set_document_title("All Members");
+            $pdf->set_document_title("All Members ($region_name)");
             $pdf->AddPage();
             $pdf->SetFont('Times', 'B', 10);
             $pdf->SetMargins(10, 5);
@@ -201,15 +206,21 @@ class ReportController extends Controller
                 $pdf->Cell(20,7,$member->phone_number,1,0,"L");
                 $pdf->Cell(18,7,$member->national_id,1,0,"L");
                 $pdf->Cell(28,7,date("dS M Y", strtotime($member->date_registered)),1,0,"L");
-                $pdf->Cell(25,7,$member->region,1,0,"L");
+                $pdf->Cell(25,7,$member->region_name,1,0,"L");
                 $pdf->Cell(15,7,$member->animals,1,1,"L");
             }
             $pdf->Output();
         }elseif ($report_type == "member_registration") {
-            $get_members = DB::select("SELECT * FROM `members` WHERE `date_registered` BETWEEN ? AND ? ORDER BY `user_id` DESC", [$start_date, $end_date]);
+            $str = $region == "0" ? "" : "AND region = '$region'";
+            $get_members = DB::select("SELECT members.*, regions.region_name FROM `members` LEFT JOIN regions ON members.region = regions.region_id WHERE `date_registered` BETWEEN ? AND ? $str ORDER BY `user_id` DESC", [$start_date, $end_date]);
             
+
+            // region name
+            $region_data = DB::select("SELECT * FROM regions WHERE region_id = ?", [$region]);
+            $region_name = $region == "0" ? "All regions" : (count($region_data) > 0 ? $region_data[0]->region_name ?? "NA" : "NA");
+
             $pdf = new PDF("P","mm","A4");
-            $pdf->set_document_title("Members registered between ".date("D dS M Y", strtotime($start_date))." to ".date("D dS M Y", strtotime($end_date)));
+            $pdf->set_document_title("Members registered between ".date("D dS M Y", strtotime($start_date))." to ".date("D dS M Y", strtotime($end_date))." ($region_name)");
             $pdf->AddPage();
             $pdf->SetFont('Times', 'B', 10);
             $pdf->SetMargins(10, 5);
@@ -244,7 +255,7 @@ class ReportController extends Controller
                 $pdf->Cell(20,7,$member->phone_number,1,0,"L");
                 $pdf->Cell(18,7,$member->national_id,1,0,"L");
                 $pdf->Cell(28,7,date("dS M Y", strtotime($member->date_registered)),1,0,"L");
-                $pdf->Cell(25,7,$member->region,1,0,"L");
+                $pdf->Cell(25,7,$member->region_name,1,0,"L");
                 $pdf->Cell(15,7,$member->animals,1,1,"L");
             }
             $pdf->Output();

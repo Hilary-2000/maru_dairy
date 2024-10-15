@@ -13,6 +13,7 @@ class chatController extends Controller
     // get member messages
     function getMemberMessages(Request $request){
         $member_id = $request->input("member_id");
+        $send_status = $request->input("send_status");
         $member_data = DB::select("SELECT * FROM `members` WHERE `user_id` = ?", [$member_id]);
         if(count($member_data) > 0){
             $chats = DB::select("SELECT 
@@ -30,8 +31,10 @@ class chatController extends Controller
                                 LEFT JOIN technicians AS T ON T.user_id = chat_thread.receiver_id
                                 WHERE chat.chat_owner = '".$member_id."'");
             
-            // today
-            $today = date("Ymd");
+            // update the seen status
+            $update = DB::select("UPDATE chat_thread SET seen_status = 'seen' WHERE (SELECT chat_owner FROM chat WHERE chat.chat_id = chat_thread.chat_id) = '".$member_id."' AND message_status = '$send_status'");
+            
+            // segmented chats
             $segmented_chats = [];
             foreach ($chats as $key => $chat) {
                 $chat->date_sent = date("H:iA", strtotime($chat->date_created));
@@ -120,7 +123,8 @@ class chatController extends Controller
                             latest_thread.date_created AS chat_sent,
                             latest_thread.message_status,
                             latest_thread.receiver_type,
-                            latest_thread.receiver_id
+                            latest_thread.receiver_id,
+                            latest_thread.seen_status
                             FROM `chat`
                             LEFT JOIN (
                                 SELECT ct.*
@@ -192,5 +196,121 @@ class chatController extends Controller
         $delete_threads = DB::delete("DELETE FROM chat_thread WHERE chat_id IN ($chat_id)");
 
         return response()->json(["success" => true, "message" => "Chats deleted successfully!"]);
+    }
+
+    function notificationCount(Request $request){
+        $chats = DB::select("SELECT chat.*,
+                            CASE 
+                                WHEN chat.chat_owner_type = '4' THEN M.fullname
+                                WHEN chat.chat_owner_type = '3' THEN SA.fullname
+                                WHEN chat.chat_owner_type = '2' THEN A.fullname
+                                ELSE T.fullname
+                            END AS fullname,
+                            CASE 
+                                WHEN latest_thread.receiver_type = '4' THEN MM.fullname
+                                WHEN latest_thread.receiver_type = '3' THEN SSA.fullname
+                                WHEN latest_thread.receiver_type = '2' THEN AA.fullname
+                                ELSE TT.fullname
+                            END AS sender_name,
+                            latest_thread.message AS last_message,
+                            latest_thread.date_created AS chat_sent,
+                            latest_thread.message_status,
+                            latest_thread.receiver_type,
+                            latest_thread.receiver_id,
+                            latest_thread.seen_status
+                            FROM `chat`
+                            LEFT JOIN (
+                                SELECT ct.*
+                                FROM chat_thread ct
+                                INNER JOIN (
+                                    SELECT chat_id, MAX(chat_thread_id) AS max_id
+                                    FROM chat_thread
+                                    GROUP BY chat_id
+                                ) AS latest ON ct.chat_id = latest.chat_id AND ct.chat_thread_id = latest.max_id
+                            ) AS latest_thread ON latest_thread.chat_id = chat.chat_id
+                            LEFT JOIN members AS M ON chat.chat_owner = M.user_id
+                            LEFT JOIN administrators AS A ON chat.chat_owner = A.user_id
+                            LEFT JOIN super_administrators AS SA ON chat.chat_owner = SA.user_id
+                            LEFT JOIN technicians AS T ON chat.chat_owner = T.user_id
+                            LEFT JOIN members AS MM ON latest_thread.receiver_id = MM.user_id
+                            LEFT JOIN administrators AS AA ON latest_thread.receiver_id = AA.user_id
+                            LEFT JOIN super_administrators AS SSA ON latest_thread.receiver_id = SSA.user_id
+                            LEFT JOIN technicians AS TT ON latest_thread.receiver_id = TT.user_id
+                            WHERE chat_status = 'active' AND (SELECT `message` FROM `chat_thread` WHERE `chat_id` = chat.chat_id ORDER BY chat_thread_id DESC LIMIT 1) != 'NULL'
+                            ORDER BY chat_sent DESC");
+        $count = 0;
+        $message_status = $request->input("entity") == "member" ? "received" : "sent";
+        foreach($chats as $key => $chat){
+            if($chat->seen_status == "notseen" && $chat->message_status == $message_status){
+                $count++;
+            }
+
+            $difference = $this->getDateDifference($chat->chat_sent, date("YmdHis"));
+            $chats[$key]->chat_sent = $difference['minutes'] < 60 ? number_format($difference['minutes'])."mins ago" : ($difference['days'] < 1 ? date("h:iA", strtotime($chat->chat_sent)) : ($difference['days'] < 7 ? date("D", strtotime($chat->chat_sent)) : date("dS-M", strtotime($chat->chat_sent))));
+            $chats[$key]->selected = false;
+        }
+
+        // notification count
+        return response()->json(["success" => true, "notification_count" => $count]);
+    }
+
+    function memberNotificationCount(Request $request){
+        // send the message but first get the sender id and type using the token
+        $authentication_code = $request->header('maru-authentication_code');
+        $check_authentication_code = DB::select("SELECT * FROM `credentials` WHERE `authentication_code` = ?", [$authentication_code]);
+        $member_id = count($check_authentication_code) > 0 ? $check_authentication_code[0]->user_id : "0";
+        $chats = DB::select("SELECT chat.*,
+                            CASE 
+                                WHEN chat.chat_owner_type = '4' THEN M.fullname
+                                WHEN chat.chat_owner_type = '3' THEN SA.fullname
+                                WHEN chat.chat_owner_type = '2' THEN A.fullname
+                                ELSE T.fullname
+                            END AS fullname,
+                            CASE 
+                                WHEN latest_thread.receiver_type = '4' THEN MM.fullname
+                                WHEN latest_thread.receiver_type = '3' THEN SSA.fullname
+                                WHEN latest_thread.receiver_type = '2' THEN AA.fullname
+                                ELSE TT.fullname
+                            END AS sender_name,
+                            latest_thread.message AS last_message,
+                            latest_thread.date_created AS chat_sent,
+                            latest_thread.message_status,
+                            latest_thread.receiver_type,
+                            latest_thread.receiver_id,
+                            latest_thread.seen_status
+                            FROM `chat`
+                            LEFT JOIN (
+                                SELECT ct.*
+                                FROM chat_thread ct
+                                INNER JOIN (
+                                    SELECT chat_id, MAX(chat_thread_id) AS max_id
+                                    FROM chat_thread
+                                    GROUP BY chat_id
+                                ) AS latest ON ct.chat_id = latest.chat_id AND ct.chat_thread_id = latest.max_id
+                            ) AS latest_thread ON latest_thread.chat_id = chat.chat_id
+                            LEFT JOIN members AS M ON chat.chat_owner = M.user_id
+                            LEFT JOIN administrators AS A ON chat.chat_owner = A.user_id
+                            LEFT JOIN super_administrators AS SA ON chat.chat_owner = SA.user_id
+                            LEFT JOIN technicians AS T ON chat.chat_owner = T.user_id
+                            LEFT JOIN members AS MM ON latest_thread.receiver_id = MM.user_id
+                            LEFT JOIN administrators AS AA ON latest_thread.receiver_id = AA.user_id
+                            LEFT JOIN super_administrators AS SSA ON latest_thread.receiver_id = SSA.user_id
+                            LEFT JOIN technicians AS TT ON latest_thread.receiver_id = TT.user_id
+                            WHERE chat_status = 'active' AND chat.chat_owner = '$member_id' AND (SELECT `message` FROM `chat_thread` WHERE `chat_id` = chat.chat_id ORDER BY chat_thread_id DESC LIMIT 1) != 'NULL'
+                            ORDER BY chat_sent DESC");
+        $count = 0;
+        $message_status = $request->input("entity") == "member" ? "received" : "sent";
+        foreach($chats as $key => $chat){
+            if($chat->seen_status == "notseen" && $chat->message_status == $message_status){
+                $count++;
+            }
+
+            $difference = $this->getDateDifference($chat->chat_sent, date("YmdHis"));
+            $chats[$key]->chat_sent = $difference['minutes'] < 60 ? number_format($difference['minutes'])."mins ago" : ($difference['days'] < 1 ? date("h:iA", strtotime($chat->chat_sent)) : ($difference['days'] < 7 ? date("D", strtotime($chat->chat_sent)) : date("dS-M", strtotime($chat->chat_sent))));
+            $chats[$key]->selected = false;
+        }
+
+        // notification count
+        return response()->json(["success" => true, "notification_count" => $count]);
     }
 }

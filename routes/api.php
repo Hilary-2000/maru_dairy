@@ -134,3 +134,5 @@ Route::post("chats/send_message", [chatController::class, "sendMessage"])->middl
 Route::post("chats/get_chats", [chatController::class, "getChats"])->middleware("authenticate");
 Route::post("chats/delete_chat_threads", [chatController::class, "deleteChatThreads"])->middleware("authenticate");
 Route::post("chats/delete_chats", [chatController::class, "deleteChats"])->middleware("authenticate");
+Route::post("notification/count", [chatController::class, "notificationCount"])->middleware("authenticate");
+Route::post("notification/member/count", [chatController::class, "memberNotificationCount"])->middleware("authenticate");
